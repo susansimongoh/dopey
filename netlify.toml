@@ -1,0 +1,12 @@
+# SPS Media Monitor – Netlify config
+# Deploy: drag the Dopey folder to https://app.netlify.com/drop
+# Or connect your GitHub repo and set publish directory to "."
+
+[build]
+  publish = "."
+
+# Serve the monitor as the root page
+[[redirects]]
+  from = "/"
+  to   = "/sps-media-monitor.html"
+  status = 200
