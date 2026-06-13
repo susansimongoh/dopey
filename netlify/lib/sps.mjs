@@ -263,6 +263,14 @@ const relevant = (text, terms) => {
   return false;
 };
 
+// A post is exempt from the keyword-relevance gate only when it's an actual SOCIAL
+// post from an SPS/YRSG own account or a CARE partner (their own activity is in
+// scope). News items must NOT qualify — their `kw` is a search phrase like
+// "Singapore Prison Service" that would otherwise look like an own-account handle.
+const SOCIAL_PLATS = new Set(['Facebook', 'Instagram', 'TikTok', 'YouTube', 'LinkedIn']);
+const ownOrCarePost = (it) => SOCIAL_PLATS.has(it.plat) &&
+  !!(ownOrg(it.kw) || ownOrg(it.pub) || isCarePartner(it.kw) || isCarePartner(it.pub));
+
 // Convert a fetched item to a clip (the evidence-log shape used everywhere).
 function itemToClip(it) {
   return {
@@ -293,8 +301,7 @@ export function mergeClips(day, results, cfg) {
     if (!it.outlet && !valid.has(it.kw)) continue;
     // SPS/YRSG own posts and CARE-partner posts are intrinsically in scope (their
     // own activity); everyone else (other accounts + news) must be SPS-relevant.
-    const exempt = ownOrg(it.kw) || ownOrg(it.pub) || isCarePartner(it.kw) || isCarePartner(it.pub);
-    if (!exempt && !relevant(it.title, terms)) continue;
+    if (!ownOrCarePost(it) && !relevant(it.title, terms)) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
   }
@@ -308,8 +315,8 @@ export function pruneClips(day, cfg) {
   const terms = topicTerms(cfg);
   const before = (day.clips || []).length;
   day.clips = (day.clips || []).filter((c) => {
-    if (!c.src) return true;   // manually added → keep
-    if (ownOrg(c.kw) || ownOrg(c.pub) || isCarePartner(c.kw) || isCarePartner(c.pub)) return true;
+    if (!c.src) return true;          // manually added → keep
+    if (ownOrCarePost(c)) return true; // own/CARE social post → in scope
     return relevant(c.subject, terms);
   });
   return before - (day.clips || []).length;
