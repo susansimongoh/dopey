@@ -1021,12 +1021,12 @@ async function generateStories(silent) {
     }
     const reported = uniq(group.filter(c => !c.plat).map(c => c.pub)).join(', ');
     const published = uniq(group.filter(c => c.plat).map(c => `${c.pub} (${c.plat})`)).join(', ');
-    const { trInt, trCom } = clusterTraction(group);
 
     S.day.stories.push({
       id: 's' + Date.now().toString(36) + made, srcKey: k, cat, hl,
       summary, reported, syndicated: '', published,
-      trInt, trCom, trNote: '', auto: true,
+      // traction left blank — fill it in manually via Edit (tier + comment observations)
+      trInt: '', trCom: '', trNote: '', auto: true,
     });
     made++;
   });
@@ -1179,9 +1179,9 @@ function storyFromClip(id) {
 /* ════════════════════ STORIES ════════════════════ */
 function tractionLine(s) {
   const parts = [];
+  // only shown when traction is filled in manually (tiers and/or a note)
   if (s.trInt && s.trCom && s.trInt !== s.trCom) parts.push(`To date, traction is ${TR_LABEL[s.trInt]} for interactions and ${TR_LABEL[s.trCom]} for comments across all platforms.`);
   else if (s.trInt || s.trCom) parts.push(`To date, traction is ${TR_LABEL[s.trInt || s.trCom]} for both interactions and comments across all platforms.`);
-  else parts.push('To date, traction has not been assessed.');
   if (s.trNote) parts.push(s.trNote);
   return parts.join(' ');
 }
@@ -1200,7 +1200,7 @@ function storyCardHtml(s, idx) {
         <div><b>Reported by:</b> ${esc(s.reported) || '-'}</div>
         ${s.syndicated ? `<div style="padding-left:14px"><b>Syndicated by:</b> ${esc(s.syndicated)}</div>` : ''}
         <div><b>Published on:</b> ${esc(s.published) || '-'}</div>
-        <div>${esc(tractionLine(s))}</div>
+        ${tractionLine(s) ? `<div>${esc(tractionLine(s))}</div>` : ''}
       </div>
     </div>`;
 }
