@@ -64,7 +64,8 @@ button { font-family: inherit; }
 .rail {
   width: 240px; flex-shrink: 0; color: var(--ink);
   background: linear-gradient(180deg, #f2f2f6 0%, var(--rail) 50%);
-  display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; z-index: 5;
+  display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh;
+  overflow-y: auto; z-index: 5;
 }
 .rail::after { content:''; position:absolute; top:0; right:0; bottom:0; width:1px;
   background: linear-gradient(180deg, transparent, rgba(0,0,0,.08) 25%, rgba(0,0,0,.08) 75%, transparent); }
@@ -93,7 +94,7 @@ button { font-family: inherit; }
 .cal-nav:hover { background: var(--rail-2); color: var(--ink); }
 .cal-title { font-family: var(--sans); font-size: 12px; font-weight: 700; letter-spacing: -.01em; text-transform: none; color: var(--ink); }
 
-.ledger { flex: 1; overflow-y: auto; padding: 4px 14px 14px; }
+.ledger { flex: 0 0 auto; padding: 4px 14px 14px; }
 .cal-dow { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 4px; }
 .cal-dow span { text-align: center; font-family: var(--mono); font-size: 8.5px; color: var(--muted); padding: 4px 0; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 30px; gap: 2px; align-content: start; }
@@ -133,7 +134,7 @@ button { font-family: inherit; }
   padding: 1.5px 8px; border-radius: 99px; font-weight: 600;
 }
 
-.rail-foot { padding: 14px 16px 18px; border-top: 1px solid var(--rail-line); display: flex; flex-direction: column; gap: 4px; }
+.rail-foot { margin-top: auto; padding: 14px 16px 18px; border-top: 1px solid var(--rail-line); display: flex; flex-direction: column; gap: 4px; }
 .rail-btn {
   background: none; border: none; border-radius: 11px; color: var(--ink-2); cursor: pointer;
   font-family: var(--mono); font-size: 9.5px; letter-spacing: 1.2px; text-transform: uppercase;
@@ -452,8 +453,6 @@ button { font-family: inherit; }
   </div>
   <div class="rail-foot">
     <button class="rail-btn" onclick="openKeywords()">⌕ Search keywords</button>
-    <button class="rail-btn" onclick="exportDay()">↓ Export day (JSON)</button>
-    <button class="rail-btn" onclick="importDay()">↑ Import day (JSON)</button>
   </div>
 </aside>
 
@@ -669,17 +668,32 @@ const CATS = {
   care_network: 'CARE Network and Community Partner-Related News',
   social_updates: 'Social Media Updates', fyi: 'FYI News',
 };
-// Fixed report structure, always shown (with '-' when empty). News Highlights
-// is a top section containing the Issues sub-section; the rest are top-level.
-const REPORT_SECTIONS = [
-  { key: 'issues', label: 'Issues', parent: 'News Highlights' },
-  { key: 'daily_news', label: 'Daily News' },
-  { key: 'yellow_ribbon', label: 'Yellow Ribbon News' },
-  { key: 'care_network', label: 'CARE Network and Community Partner-Related News' },
-  { key: 'social_updates', label: 'Social Media Updates', note: 'Singapore Prison Service' },
-  { key: 'fyi', label: 'FYI News' },
-];
-const CAT_KEYS = REPORT_SECTIONS.map(s => s.key);
+const CAT_KEYS = ['issues', 'daily_news', 'yellow_ribbon', 'care_network', 'social_updates', 'fyi'];
+// Own official accounts → their posts go under "Social Media Updates" (split by org).
+const SPS_OWN = ['singaporeprisonservice'];
+const YRSG_OWN = ['yellowribbonsg', 'yellowribbonsingapore'];
+function ownOrg(handle) {
+  const h = (handle || '').replace(/^@/, '').toLowerCase();
+  if (SPS_OWN.includes(h)) return 'sps';
+  if (YRSG_OWN.includes(h)) return 'yrsg';
+  return null;
+}
+// The report layout, always shown daily (with '-' when a section is empty).
+function sectionSpec() {
+  const all = S.day.stories || [];
+  const f = fn => all.filter(fn);
+  return [
+    { head: 'News Highlights', subs: [{ label: 'Issues', stories: f(s => s.cat === 'issues') }] },
+    { label: 'Daily News', stories: f(s => s.cat === 'daily_news') },
+    { label: 'Yellow Ribbon News', stories: f(s => s.cat === 'yellow_ribbon') },
+    { label: 'CARE Network and Community Partner-Related News', stories: f(s => s.cat === 'care_network') },
+    { head: 'Social Media Updates', subs: [
+        { label: 'Singapore Prison Service', stories: f(s => s.cat === 'social_updates' && s.subOrg !== 'yrsg') },
+        { label: 'Yellow Ribbon Singapore', stories: f(s => s.cat === 'social_updates' && s.subOrg === 'yrsg') },
+    ] },
+    { label: 'FYI News', stories: f(s => s.cat === 'fyi') },
+  ];
+}
 const TR_LABEL = { very_high: 'very high', high: 'high', moderate: 'moderate', low: 'low', very_low: 'very low' };
 
 const S = {
@@ -772,10 +786,7 @@ function calShift(delta) {
   m += delta;
   if (m < 0) { m = 11; y--; }
   if (m > 11) { m = 0; y++; }
-  // don't navigate past the current month (no archive in the future)
-  const t = new Date(localDate() + 'T12:00:00');
-  if (y > t.getFullYear() || (y === t.getFullYear() && m > t.getMonth())) return;
-  S.calYM = { y, m };
+  S.calYM = { y, m };   // free navigation in both directions
   renderLedger();
 }
 
@@ -1012,18 +1023,23 @@ async function generateStories(silent) {
     const summary = (sum && sum.summary) ? sum.summary : capt;
     if (!hl) return;
 
-    // category: prefer the LLM's classification, fall back to the clip's category
-    let cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : null;
-    if (!cat) {
-      const catCount = {}; group.forEach(c => { catCount[c.cat] = (catCount[c.cat] || 0) + 1; });
-      cat = Object.entries(catCount).sort((a, b) => b[1] - a[1])[0][0];
-      if (!CAT_KEYS.includes(cat)) cat = 'daily_news';
+    // own SPS/YRSG accounts → Social Media Updates (split by org); else use the LLM category
+    let cat, subOrg = '';
+    const org = group.map(c => ownOrg(c.kw)).find(Boolean);
+    if (org) { cat = 'social_updates'; subOrg = org; }
+    else {
+      cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : null;
+      if (!cat) {
+        const catCount = {}; group.forEach(c => { catCount[c.cat] = (catCount[c.cat] || 0) + 1; });
+        cat = Object.entries(catCount).sort((a, b) => b[1] - a[1])[0][0];
+        if (!CAT_KEYS.includes(cat)) cat = 'daily_news';
+      }
     }
     const reported = uniq(group.filter(c => !c.plat).map(c => c.pub)).join(', ');
     const published = uniq(group.filter(c => c.plat).map(c => `${c.pub} (${c.plat})`)).join(', ');
 
     S.day.stories.push({
-      id: 's' + Date.now().toString(36) + made, srcKey: k, cat, hl,
+      id: 's' + Date.now().toString(36) + made, srcKey: k, cat, subOrg, hl,
       summary, reported, syndicated: '', published,
       // traction left blank — fill it in manually via Edit (tier + comment observations)
       trInt: '', trCom: '', trNote: '', auto: true,
@@ -1207,16 +1223,16 @@ function storyCardHtml(s, idx) {
 
 // Render stories grouped into the fixed report sections, always shown ('-' if empty).
 function renderStories() {
-  const stories = S.day.stories || [];
   el('stories-empty').classList.add('hidden');     // we always show the section scaffold now
-  let html = '<div class="sec-head sec-top">News Highlights</div>';
-  let i = 0;
-  REPORT_SECTIONS.forEach(sec => {
-    const inSec = stories.filter(s => s.cat === sec.key);
-    const sub = sec.parent === 'News Highlights';
-    html += `<div class="sec-label ${sub ? 'sub' : ''}">${esc(sec.label)}</div>`;
-    if (sec.note) html += `<div class="sec-note">${esc(sec.note)}</div>`;
-    html += inSec.length ? inSec.map(s => storyCardHtml(s, i++)).join('') : '<div class="sec-empty">-</div>';
+  let html = ''; let i = 0;
+  const block = (stories) => stories.length ? stories.map(s => storyCardHtml(s, i++)).join('') : '<div class="sec-empty">-</div>';
+  sectionSpec().forEach(sec => {
+    if (sec.head) {
+      html += `<div class="sec-head">${esc(sec.head)}</div>`;
+      sec.subs.forEach(sub => { html += `<div class="sec-label sub">${esc(sub.label)}</div>` + block(sub.stories); });
+    } else {
+      html += `<div class="sec-label">${esc(sec.label)}</div>` + block(sec.stories);
+    }
   });
   el('stories-list').innerHTML = html;
 }
@@ -1286,24 +1302,19 @@ function storyBlockHtml(s, i) {
 function reportHtml() {
   const cfg = S.day.cfg;
   const bar = t => `<div style="background:#16263d;color:#fff;font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:5px 10px;margin:0 0 12px">${t}</div>`;
-  const subbar = t => `<div style="color:#c0391b;font-weight:800;font-size:12px;margin:0 0 10px">${t}</div>`;
+  const subbar = t => `<div style="color:#0f4aa8;font-weight:800;font-size:12px;margin:4px 0 10px">${t}</div>`;
   const empty = `<div style="color:#888;margin-bottom:18px">-</div>`;
+  const block = st => st.length ? st.map((s, i) => storyBlockHtml(s, i)).join('') : empty;
   let h = `<div style="text-align:right;font-size:11px;font-weight:700;color:#555">${esc(cfg.num) || '___/2026'}</div>
     <div style="text-align:center;font-weight:900;font-size:15.5px;text-transform:uppercase;color:#16263d;letter-spacing:.4px;margin:6px 0 22px">Media Monitoring Report<br>${esc(cfg.date) || '[Date]'}</div>`;
-
-  // 1. News Highlights → (1.1) Issues
-  h += `<div style="margin-bottom:20px">${bar('News Highlights')}`;
-  const issues = (S.day.stories || []).filter(s => s.cat === 'issues');
-  h += subbar('Issues');
-  h += issues.length ? issues.map((s, i) => storyBlockHtml(s, i)).join('') : empty;
-  h += `</div>`;
-
-  // 2-6. remaining top-level sections, always shown
-  REPORT_SECTIONS.filter(sec => !sec.parent).forEach(sec => {
-    const st = (S.day.stories || []).filter(s => s.cat === sec.key);
-    h += `<div style="margin-bottom:20px">${bar(sec.label)}`;
-    if (sec.note) h += `<div style="font-style:italic;margin-bottom:8px">${esc(sec.note)}</div>`;
-    h += st.length ? st.map((s, i) => storyBlockHtml(s, i)).join('') : empty;
+  sectionSpec().forEach(sec => {
+    h += `<div style="margin-bottom:20px">`;
+    if (sec.head) {
+      h += bar(sec.head);
+      sec.subs.forEach(sub => { h += subbar(sub.label) + block(sub.stories); });
+    } else {
+      h += bar(sec.label) + block(sec.stories);
+    }
     h += `</div>`;
   });
   return h;
@@ -1343,14 +1354,15 @@ function storyTextBlock(s, i) {
 
 function copyReport() {
   const cfg = S.day.cfg;
-  const stOf = c => (S.day.stories || []).filter(s => s.cat === c);
-  let t = `${cfg.num || ''}\n\nMEDIA MONITORING REPORT\n${cfg.date || ''}\n\nNEWS HIGHLIGHTS\n\nIssues\n\n`;
-  const issues = stOf('issues');
-  t += (issues.length ? issues.map(storyTextBlock).join('') : '-\n') + '\n';
-  REPORT_SECTIONS.filter(sec => !sec.parent).forEach(sec => {
-    t += `${sec.label.toUpperCase()}\n\n` + (sec.note ? sec.note + '\n\n' : '');
-    const st = stOf(sec.key);
-    t += (st.length ? st.map(storyTextBlock).join('') : '-\n') + '\n';
+  const blk = st => (st.length ? st.map(storyTextBlock).join('') : '-\n') + '\n';
+  let t = `${cfg.num || ''}\n\nMEDIA MONITORING REPORT\n${cfg.date || ''}\n\n`;
+  sectionSpec().forEach(sec => {
+    if (sec.head) {
+      t += `${sec.head.toUpperCase()}\n\n`;
+      sec.subs.forEach(sub => { t += `${sub.label}\n\n` + blk(sub.stories); });
+    } else {
+      t += `${sec.label.toUpperCase()}\n\n` + blk(sec.stories);
+    }
   });
   navigator.clipboard.writeText(t).then(() => toast('Report copied to clipboard.'));
 }
