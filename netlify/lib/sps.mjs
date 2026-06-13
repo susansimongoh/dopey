@@ -368,7 +368,10 @@ export async function ogImage(link) {
 }
 
 // ── Gemini: rewrite clip clusters into journalist-style summaries ─────────
-const GEMINI_MODEL = 'gemini-2.5-flash';
+// Tried in order; on a 429 (free-tier quota exhausted) we fall through to the
+// next model, which sits in a separate quota bucket. 2.0-flash has the most
+// generous free daily limit, so it leads.
+const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
 
 export async function summarizeItems(items) {
   const key = Netlify.env.get('GEMINI_API_KEY');
@@ -389,12 +392,20 @@ Return ONLY a JSON array, one object per item, each with keys "key", "headline",
 Items:
 ${JSON.stringify(items)}`;
   const body = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, responseMimeType: 'application/json' } };
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error('Gemini ' + r.status + ' ' + (await r.text()).slice(0, 200));
-  const data = await r.json();
-  let txt = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '[]';
-  txt = txt.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-  return JSON.parse(txt);
+  let lastErr = 'no models tried';
+  for (const model of GEMINI_MODELS) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (r.ok) {
+      const data = await r.json();
+      let txt = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '[]';
+      txt = txt.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+      return JSON.parse(txt);
+    }
+    lastErr = 'Gemini ' + r.status + ' ' + (await r.text()).slice(0, 160);
+    // 429 = quota for this model → try the next; other errors → stop and report
+    if (r.status !== 429) break;
+  }
+  throw new Error(lastErr);
 }
