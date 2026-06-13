@@ -214,9 +214,10 @@ async function youtube(handles, cutoff, errors) {
         if (!title || !link || !dt || dt < cutoff) continue;
         const vm = e.match(/<media:thumbnail[^>]*url="([^"]+)"/);
         const views = (e.match(/views="(\d+)"/) || [])[1];
+        const yeng = { plays: views ? +views : 0, likes: 0, comments: 0, shares: 0 };
         out.push({ id: await sha1_12(link), src: 'YouTube', kw: '@' + h, cat: 'daily_news',
           title, link, pub: h, plat: 'YouTube', published: dt.toISOString(),
-          eng: { plays: views ? +views : 0, likes: 0, comments: 0, shares: 0 },
+          eng: yeng, traction: traction('YouTube', yeng),
           img: vm ? vm[1] : null, status: 'new' });
       }
     } catch (e) { errors.push(`YouTube @${h}: ${String(e).slice(0, 60)}`); }
@@ -275,7 +276,7 @@ async function httpPostJson(url, body) {
 }
 function traction(plat, eng) {
   const plays = eng.plays || 0, c = (eng.likes || 0) + (eng.comments || 0) + (eng.shares || 0);
-  if (plat === 'TikTok') { if (plays >= 4e5 || c >= 14000) return 'very_high'; if (plays >= 1e5 || c >= 3000) return 'high'; if (plays >= 4e4 || c >= 850) return 'moderate'; if (plays >= 2e4 || c >= 350) return 'low'; return 'very_low'; }
+  if (plat === 'TikTok' || plat === 'YouTube') { if (plays >= 4e5 || c >= 14000) return 'very_high'; if (plays >= 1e5 || c >= 3000) return 'high'; if (plays >= 4e4 || c >= 850) return 'moderate'; if (plays >= 2e4 || c >= 350) return 'low'; return 'very_low'; }
   if (c > 300) return 'high'; if (c >= 100) return 'moderate'; return 'low';
 }
 async function socialItem(plat, handle, title, link, dt, eng, img) {
