@@ -120,6 +120,8 @@ function itemToClip(it) {
 
 // Merge fetched results straight into day.clips: keep only on-watchlist,
 // SPS-relevant items; skip ones already clipped or previously deleted.
+const titleKey = (s) => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90);
+
 export function mergeClips(day, results, cfg) {
   const valid = new Set((cfg.keywords || []).map((k) => k.q));
   for (const hs of Object.values(cfg.accounts || {})) for (const h of hs) valid.add('@' + h);
@@ -127,12 +129,17 @@ export function mergeClips(day, results, cfg) {
   day.clips = day.clips || [];
   day.dismissed = day.dismissed || [];
   const have = new Set(day.clips.map((c) => c.id));
+  const haveLinks = new Set(day.clips.map((c) => c.link).filter(Boolean));
+  const haveTitles = new Set(day.clips.map((c) => titleKey(c.subject)).filter(Boolean));
   const gone = new Set(day.dismissed);
   for (const it of results) {
     if (have.has(it.id) || gone.has(it.id)) continue;
+    if (it.link && haveLinks.has(it.link)) continue;          // same URL = dupe
+    const tk = titleKey(it.title);
+    if (tk && haveTitles.has(tk)) continue;                   // same headline = dupe
     if (!valid.has(it.kw)) continue;
     if (!relevant(it.title, terms)) continue;
-    have.add(it.id);
+    have.add(it.id); if (it.link) haveLinks.add(it.link); if (tk) haveTitles.add(tk);
     day.clips.push(itemToClip(it));
   }
   day.clips.sort((a, b) => (b.published || b.date || '').localeCompare(a.published || a.date || ''));

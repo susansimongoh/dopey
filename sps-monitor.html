@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPS Media Monitor — Intel Desk</title>
+<title>SPS Media Monitor · Intel Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -19,9 +19,11 @@
   --muted: #86868b;
   --line: rgba(0,0,0,.06);
   --line-2: rgba(0,0,0,.12);
-  --verm: #cf3a1d;
-  --verm-deep: #a82d12;
-  --verm-soft: #fbe9e3;
+  --verm: #1763d6;          /* brand blue (kept the var name for reuse) */
+  --verm-deep: #0f4aa8;     /* dark blue */
+  --verm-soft: #e4eefb;     /* light blue */
+  --blue-mid: #cfe0fa;      /* selected-day blue */
+  --alert: #d8762a;         /* amber: writeup-pending status */
   --gold: #a87d18;
   --gold-soft: #f7efd7;
   --teal: #0e7460;
@@ -58,7 +60,7 @@ a { color: var(--ink); }
 button { font-family: inherit; }
 * { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
 
-/* ═══ DAY LEDGER (left rail — light sidebar) ═══ */
+/* ═══ DAY LEDGER (left rail · light sidebar) ═══ */
 .rail {
   width: 240px; flex-shrink: 0; color: var(--ink);
   background: linear-gradient(180deg, #f2f2f6 0%, var(--rail) 50%);
@@ -108,10 +110,12 @@ button { font-family: inherit; }
   position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
   width: 4px; height: 4px; border-radius: 50%; background: #2fb573;
 }
-.cal-cell .cal-dot.new { background: var(--verm); }
-.cal-cell.today { box-shadow: inset 0 0 0 1.5px var(--verm); color: var(--verm); }
-.cal-cell.selected { background: var(--ink); color: #fff; font-weight: 700; box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }
-.cal-cell.selected .cal-dot { background: #fff; }
+.cal-cell .cal-dot.new { background: var(--alert); }
+/* highlighted (open) day = lighter blue */
+.cal-cell.selected { background: var(--blue-mid); color: var(--verm-deep); font-weight: 700; }
+/* current day = dark blue (declared after .selected so today wins when both) */
+.cal-cell.today { background: var(--verm-deep); color: #fff; font-weight: 700; box-shadow: inset 0 1px 0 rgba(255,255,255,.14); }
+.cal-cell.today .cal-dot { background: #fff; }
 
 .cal-sel {
   margin-top: 14px; padding: 11px 13px; border-radius: 14px; background: #fff;
@@ -201,7 +205,7 @@ button { font-family: inherit; }
 }
 .ribbon b { font-family: var(--mono); letter-spacing: .5px; }
 
-/* fetch banner — double-bezel */
+/* fetch banner · double-bezel */
 .fetchline {
   margin-bottom: 22px; padding: 13px 18px; border-radius: 18px;
   background: var(--card); display: flex; align-items: center; gap: 12px; font-size: 13px;
@@ -287,7 +291,7 @@ button { font-family: inherit; }
 .src-facebook { background: #dbe5f5; color: #2d4f8a; }
 .src-youtube { background: #f7dcd7; color: #a32014; }
 .tr-chip { font-size: 9.5px; letter-spacing: -.01em; padding: 2.5px 9px; border-radius: 99px; background: rgba(0,0,0,.05); color: var(--muted); font-weight: 600; }
-.tr-chip.tr-high, .tr-chip.tr-very_high { background: var(--verm-soft); color: var(--verm); }
+.tr-chip.tr-high, .tr-chip.tr-very_high { background: #fbe4e0; color: #c0392b; }
 .tr-chip.tr-moderate { background: var(--gold-soft); color: var(--gold); }
 .kw-tag { font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
 .kw-tag::before { content: '⌕ '; }
@@ -336,7 +340,7 @@ button { font-family: inherit; }
 .cat-yellow_ribbon { background: var(--gold-soft); color: #6b5413; }
 .cat-care_network { background: var(--teal-soft); color: var(--teal); }
 .cat-social_updates { background: #e8e2f4; color: #4c3a78; }
-.cat-issues { background: var(--verm-soft); color: var(--verm); }
+.cat-issues { background: #fbe4e0; color: #c0392b; }
 .cat-fyi { background: var(--paper-2); color: var(--muted); }
 
 /* ═══ STORIES ═══ */
@@ -433,7 +437,7 @@ button { font-family: inherit; }
   </div>
   <div class="ledger-head">
     <button class="cal-nav" onclick="calShift(-1)">‹</button>
-    <span class="cal-title" id="cal-title">—</span>
+    <span class="cal-title" id="cal-title"></span>
     <button class="cal-nav" onclick="calShift(1)">›</button>
   </div>
   <div class="ledger">
@@ -463,14 +467,12 @@ button { font-family: inherit; }
         <button class="btn" id="btn-fetch" onclick="doFetch(false)">⚡ Fetch news</button>
         <button class="btn hidden" id="btn-social" onclick="doSocialFetch(false)">🛰 Social sweep</button>
         <button class="btn" onclick="printClipsLog()">🖨 Clips log</button>
-        <button class="btn btn-ink" onclick="printReport()">🖨 Report PDF</button>
+        <button class="btn btn-ink" onclick="openReportModal()">🖨 Report PDF</button>
       </div>
     </div>
     <div class="tabs">
-      <button class="tab active" data-tab="overview" onclick="setTab('overview')">Overview</button>
+      <button class="tab active" data-tab="stories" onclick="setTab('stories')">Stories <span class="badge" id="b-stories">0</span></button>
       <button class="tab" data-tab="clips" onclick="setTab('clips')">Clips <span class="badge" id="b-clips">0</span></button>
-      <button class="tab" data-tab="stories" onclick="setTab('stories')">Stories <span class="badge" id="b-stories">0</span></button>
-      <button class="tab" data-tab="report" onclick="setTab('report')">Report</button>
     </div>
   </div>
 
@@ -478,31 +480,18 @@ button { font-family: inherit; }
     <div id="ribbon" class="ribbon hidden"></div>
     <div id="fetchline" class="fetchline hidden"></div>
 
-    <!-- OVERVIEW -->
-    <section id="tab-overview">
-      <div class="ov-stats">
-        <div class="ov-stat"><div class="ov-num" id="ov-clips">0</div><div class="ov-lab">clips collected</div></div>
-        <div class="ov-stat"><div class="ov-num" id="ov-stories">0</div><div class="ov-lab">stories written</div></div>
-        <div class="ov-stat"><div class="ov-num" id="ov-high">0</div><div class="ov-lab">high traction</div></div>
-        <div class="ov-stat"><div class="ov-num" id="ov-pending">0</div><div class="ov-lab">clips not yet in a story</div></div>
+    <!-- STORIES -->
+    <section id="tab-stories">
+      <div class="toolbar">
+        <button class="btn btn-sm btn-ink" onclick="generateStories()">✨ Auto-generate from clips</button>
+        <button class="btn btn-sm" onclick="openStoryModal()">+ Add story</button>
+        <span class="spacer"></span>
+        <button class="btn btn-sm btn-ghost" onclick="openReportModal()">⚙ Report header</button>
       </div>
-      <div class="ov-grid">
-        <div class="ov-card">
-          <div class="ov-card-h">Clips by category</div>
-          <div id="ov-cats"></div>
-        </div>
-        <div class="ov-card">
-          <div class="ov-card-h">Stories <span class="ov-hint" onclick="setTab('stories')">manage →</span></div>
-          <div id="ov-stories-list"></div>
-        </div>
-      </div>
-      <div class="ov-card">
-        <div class="ov-card-h">Latest clips <span class="ov-hint" onclick="setTab('clips')">see all →</span></div>
-        <div id="ov-latest"></div>
-      </div>
-      <div id="overview-empty" class="empty hidden">
-        <div class="big">Nothing collected yet.</div>
-        <p>Hit <b>⚡ Fetch news</b> or <b>🛰 Re-sweep socials</b> to gather today's coverage.</p>
+      <div id="stories-list"></div>
+      <div id="stories-empty" class="empty hidden">
+        <div class="big">No stories yet.</div>
+        <p>Collect clips, then hit <b>✨ Auto-generate from clips</b> — or add one manually.</p>
       </div>
     </section>
 
@@ -518,41 +507,6 @@ button { font-family: inherit; }
       <div id="clips-empty" class="empty hidden">
         <div class="big">No clips logged.</div>
         <p>Fetch news or sweep socials to collect clips, or add one manually.</p>
-      </div>
-    </section>
-
-    <!-- STORIES -->
-    <section id="tab-stories" class="hidden">
-      <div class="toolbar">
-        <button class="btn btn-sm btn-ink" onclick="openStoryModal()">+ Add story</button>
-      </div>
-      <div id="stories-list"></div>
-      <div id="stories-empty" class="empty hidden">
-        <div class="big">No stories yet.</div>
-        <p>Group clips into summarised stories for the report. Tip: use <b>→ Story</b> on any clip.</p>
-      </div>
-    </section>
-
-    <!-- REPORT -->
-    <section id="tab-report" class="hidden">
-      <div class="report-wrap">
-        <div class="report-side">
-          <div class="panel">
-            <div class="panel-title">Report settings</div>
-            <label class="f-label">Report number</label>
-            <input class="f-input" id="cfg-num" placeholder="e.g. 101/2026" oninput="cfgChanged()">
-            <label class="f-label">Date / range heading</label>
-            <input class="f-input" id="cfg-date" placeholder="Friday, 13 June 2026" oninput="cfgChanged()">
-            <label class="f-label">News highlights</label>
-            <textarea class="f-area" id="cfg-highlights" oninput="cfgChanged()"></textarea>
-            <label class="f-label">Issues monitoring (fallback text)</label>
-            <textarea class="f-area" id="cfg-issues" oninput="cfgChanged()"></textarea>
-            <label class="f-label">FYI news (fallback text)</label>
-            <textarea class="f-area" id="cfg-fyi" oninput="cfgChanged()"></textarea>
-            <button class="btn" style="width:100%;margin-top:14px" onclick="copyReport()">Copy as text</button>
-          </div>
-        </div>
-        <div class="report-page" id="report-preview"></div>
       </div>
     </section>
   </div>
@@ -606,7 +560,7 @@ button { font-family: inherit; }
       <option value="daily_news">Daily News</option>
       <option value="yellow_ribbon">Yellow Ribbon News</option>
       <option value="care_network">CARE Network & Community Partners</option>
-      <option value="social_updates">Social Media Updates – SPS</option>
+      <option value="social_updates">Social Media Updates · SPS</option>
       <option value="issues">Issues Monitoring</option>
       <option value="fyi">FYI News</option>
     </select>
@@ -621,14 +575,14 @@ button { font-family: inherit; }
     <label class="f-label">Published on</label>
     <input class="f-input" id="sm-published" placeholder="CNA (Facebook), ST (X)…">
     <div class="f-row">
-      <div><label class="f-label" title="TikTok: Very High ≥400k views/≥14k eng · High ≥100k/≥3k · Moderate ≥40k/≥850 · Low ≥20k/≥350. Others: High >300 combined · Moderate 100–300 · Low <100 · Viral ≥1,500 in 3hrs">Traction — interactions</label>
+      <div><label class="f-label" title="TikTok: Very High ≥400k views/≥14k eng · High ≥100k/≥3k · Moderate ≥40k/≥850 · Low ≥20k/≥350. Others: High >300 combined · Moderate 100-300 · Low <100 · Viral ≥1,500 in 3hrs">Traction · interactions</label>
         <select class="f-select" id="sm-tr-int">
           <option value="">Not set</option><option value="very_high">Very High / Viral</option>
           <option value="high">High</option><option value="moderate">Moderate</option>
           <option value="low">Low</option><option value="very_low">Very Low</option>
         </select>
       </div>
-      <div><label class="f-label">Traction — comments</label>
+      <div><label class="f-label">Traction · comments</label>
         <select class="f-select" id="sm-tr-com">
           <option value="">Not set</option><option value="very_high">Very High / Viral</option>
           <option value="high">High</option><option value="moderate">Moderate</option>
@@ -661,7 +615,7 @@ button { font-family: inherit; }
     <div id="kw-accounts-section">
       <h3 style="margin-top:24px;font-size:17px">Social accounts (Apify sweep)</h3>
       <p style="font-size:12.5px;color:var(--muted);margin-bottom:8px">
-        Handles swept by the 🛰 Social sweep — comma-separated, no @. Each sweep spends a little
+        Handles swept by the 🛰 Social sweep · comma-separated, no @. Each sweep spends a little
         Apify credit, so keep the lists focused (the MM Guide's highlighted accounts).
       </p>
       <label class="f-label">TikTok handles</label>
@@ -670,7 +624,7 @@ button { font-family: inherit; }
       <textarea class="f-area" id="acc-instagram" style="min-height:46px" placeholder="kixes, jolovan, …"></textarea>
       <label class="f-label">Facebook page names</label>
       <textarea class="f-area" id="acc-facebook" style="min-height:46px" placeholder="theonlinecitizen, …"></textarea>
-      <label class="f-label">YouTube channels (free RSS — fetched with news, no credits)</label>
+      <label class="f-label">YouTube channels (free RSS · fetched with news, no credits)</label>
       <textarea class="f-area" id="acc-youtube" style="min-height:46px" placeholder="theonlinecitizenasia, …"></textarea>
       <label class="f-label">Posts per account per sweep (cost control)</label>
       <input class="f-input" id="kw-ppa" type="number" min="1" max="20" style="width:90px">
@@ -678,6 +632,31 @@ button { font-family: inherit; }
     <div class="m-foot">
       <button class="btn btn-ghost" onclick="closeModal('kw-modal')">Cancel</button>
       <button class="btn btn-ink" onclick="saveKeywords()">Save keywords</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ REPORT MODAL ═══ -->
+<div class="overlay hidden" id="report-modal">
+  <div class="modal modal-lg">
+    <h3>Export report PDF</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
+      The PDF includes this day's <b>stories</b> (the summaries report) followed by the <b>clips log</b> with screenshots. Set the report header below.
+    </p>
+    <div class="f-row">
+      <div><label class="f-label">Report number</label><input class="f-input" id="cfg-num" placeholder="e.g. 101/2026"></div>
+      <div><label class="f-label">Date / range heading</label><input class="f-input" id="cfg-date" placeholder="Friday, 13 June 2026"></div>
+    </div>
+    <label class="f-label">News highlights</label>
+    <textarea class="f-area" id="cfg-highlights"></textarea>
+    <label class="f-label">Issues monitoring (fallback if no Issues stories)</label>
+    <textarea class="f-area" id="cfg-issues"></textarea>
+    <label class="f-label">FYI news (fallback if no FYI stories)</label>
+    <textarea class="f-area" id="cfg-fyi"></textarea>
+    <div class="m-foot">
+      <button class="btn btn-ghost" onclick="closeModal('report-modal')">Cancel</button>
+      <button class="btn" onclick="saveReportCfg(); copyReport()">Copy as text</button>
+      <button class="btn btn-ink" onclick="saveReportCfg(); printReport()">🖨 Download PDF</button>
     </div>
   </div>
 </div>
@@ -697,7 +676,7 @@ const S = {
   date: null,            // currently open day (YYYY-MM-DD)
   day: null,             // full day object
   days: [],              // ledger entries
-  tab: 'overview',
+  tab: 'stories',
   keywords: null,
   apiOk: true,
   editClipId: null, editStoryId: null,
@@ -847,7 +826,7 @@ async function openDay(date, opts = {}) {
   const today = localDate();
   el('ribbon').classList.toggle('hidden', date === today);
   if (date !== today) {
-    el('ribbon').innerHTML = `<span>📁 Viewing the archive for <b>${esc(prettyDate(date))}</b> — loaded from disk, nothing re-fetched.</span>
+    el('ribbon').innerHTML = `<span>📁 Viewing the archive for <b>${esc(prettyDate(date))}</b></span>
       <button class="btn btn-sm" onclick="openDay('${today}')">Jump to today →</button>`;
   }
 
@@ -888,7 +867,7 @@ async function doFetch(force, auto) {
   }
   const fl = el('fetchline');
   fl.classList.remove('hidden');
-  fl.innerHTML = `<div class="spinner"></div><span>Sweeping the wire — Google News & Reddit, ${auto ? 'first fetch of the day' : 'merging fresh items'}…</span>`;
+  fl.innerHTML = `<div class="spinner"></div><span>Sweeping the wire · Google News & Reddit, ${auto ? 'first fetch of the day' : 'merging fresh items'}…</span>`;
   el('btn-fetch').disabled = true;
   try {
     const baseline = S.day.fetched_at || null;
@@ -901,12 +880,12 @@ async function doFetch(force, auto) {
       S.day = res.day;
     }
     const before = clipCount; const added = (S.day.clips || []).length - before;
-    renderMasthead(); renderAll(); refreshLedgerCounts(); snapMissing();
-    fl.innerHTML = `<span>✅ <b>Fetch complete</b> — <b>${added} new clip${added === 1 ? '' : 's'}</b> collected (${(S.day.clips || []).length} total).${(S.day.fetch_errors || []).length ? ' <span style="color:var(--verm)">(' + S.day.fetch_errors.length + ' source errors)</span>' : ''}</span>
+    generateStories(true); renderMasthead(); renderAll(); refreshLedgerCounts(); snapMissing();
+    fl.innerHTML = `<span>✅ <b>Fetch complete</b> · <b>${added} new clip${added === 1 ? '' : 's'}</b> collected (${(S.day.clips || []).length} total).${(S.day.fetch_errors || []).length ? ' <span style="color:var(--verm)">(' + S.day.fetch_errors.length + ' source errors)</span>' : ''}</span>
       <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
     setTimeout(() => fl.classList.add('hidden'), 6000);
   } catch (e) {
-    fl.innerHTML = `<span>❌ Fetch failed: ${esc(e.message)} — check your connection, then try again.</span>
+    fl.innerHTML = `<span>❌ Fetch failed: ${esc(e.message)} · check your connection, then try again.</span>
       <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
   }
   el('btn-fetch').disabled = false;
@@ -920,7 +899,7 @@ async function doSocialFetch(force) {
   }
   const fl = el('fetchline');
   fl.classList.remove('hidden');
-  fl.innerHTML = `<div class="spinner"></div><span>🛰 Sweeping social accounts via Apify (TikTok · Instagram · Facebook) — this takes 1–3 minutes…</span>`;
+  fl.innerHTML = `<div class="spinner"></div><span>🛰 Sweeping social accounts via Apify (TikTok · Instagram · Facebook) · this takes 1-3 minutes…</span>`;
   el('btn-social').disabled = true;
   try {
     const baseline = S.day.social_fetched_at || null;
@@ -933,9 +912,9 @@ async function doSocialFetch(force) {
       S.day = res.day;
     }
     const added = (S.day.clips || []).length - clipCount;
-    renderMasthead(); renderAll(); refreshLedgerCounts(); snapMissing();
+    generateStories(true); renderMasthead(); renderAll(); refreshLedgerCounts(); snapMissing();
     const errs = (S.day.social_errors || []);
-    fl.innerHTML = `<span>✅ <b>Social sweep complete</b> — <b>${added} new clip${added === 1 ? '' : 's'}</b> collected (${(S.day.clips || []).length} total).${errs.length ? ' <span style="color:var(--verm)">(' + esc(errs.join(' · ')) + ')</span>' : ''}</span>
+    fl.innerHTML = `<span>✅ <b>Social sweep complete</b> · <b>${added} new clip${added === 1 ? '' : 's'}</b> collected (${(S.day.clips || []).length} total).${errs.length ? ' <span style="color:var(--verm)">(' + esc(errs.join(' · ')) + ')</span>' : ''}</span>
       <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
     if (!errs.length) setTimeout(() => fl.classList.add('hidden'), 7000);
   } catch (e) {
@@ -949,9 +928,7 @@ async function doSocialFetch(force) {
 function setTab(t) {
   S.tab = t;
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
-  ['overview', 'clips', 'stories', 'report'].forEach(x => el('tab-' + x).classList.toggle('hidden', x !== t));
-  if (t === 'overview') renderOverview();
-  if (t === 'report') { fillCfgInputs(); renderReport(); }
+  ['stories', 'clips'].forEach(x => el('tab-' + x).classList.toggle('hidden', x !== t));
 }
 
 function badges() {
@@ -959,42 +936,69 @@ function badges() {
   el('b-stories').textContent = (S.day.stories || []).length;
 }
 
-function renderAll() { renderOverview(); renderClips(); renderStories(); badges(); if (S.tab === 'report') { fillCfgInputs(); renderReport(); } }
+function renderAll() { renderClips(); renderStories(); badges(); }
 
-/* ════════════════════ OVERVIEW (summary of clips + stories) ════════════════════ */
 function isHigh(c) { return c.traction === 'high' || c.traction === 'very_high'; }
 
-function renderOverview() {
-  const clips = S.day.clips || [], stories = S.day.stories || [];
-  el('overview-empty').classList.toggle('hidden', clips.length > 0 || stories.length > 0);
+/* ════════════════════ AUTO-GENERATE STORIES FROM CLIPS ════════════════════ */
+const TR_RANK = { very_high: 4, high: 3, moderate: 2, low: 1, very_low: 0 };
+function normKey(s) { return (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 3).slice(0, 6).join(' '); }
+function uniq(a) { return [...new Set(a.filter(Boolean))]; }
 
-  el('ov-clips').textContent = clips.length;
-  el('ov-stories').textContent = stories.length;
-  el('ov-high').textContent = clips.filter(isHigh).length;
-  // clips whose category has no story yet = still needing a writeup
-  const storyCats = new Set(stories.map(s => s.cat));
-  el('ov-pending').textContent = clips.filter(c => !storyCats.has(c.cat)).length;
+// Cluster the day's clips by subject similarity and draft a story per cluster.
+// Skips clusters that already have a matching story, so it's safe to re-run
+// (and to call automatically after a fetch) without clobbering edits.
+function generateStories(silent) {
+  const clips = S.day.clips || [];
+  if (!clips.length) { if (!silent) toast('No clips to generate from.'); return 0; }
+  S.day.stories = S.day.stories || [];
 
-  // clips by category
-  const cats = {};
-  clips.forEach(c => { cats[c.cat] = (cats[c.cat] || 0) + 1; });
-  el('ov-cats').innerHTML = Object.keys(cats).length
-    ? Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([cat, n]) =>
-        `<div class="ov-row"><span class="cat-tag cat-${esc(cat)}">${(CATS[cat] || cat).split(' &')[0].split(' and ')[0]}</span><b>${n}</b></div>`).join('')
-    : '<div class="ov-muted">No clips yet.</div>';
+  const clusters = {};
+  clips.forEach(c => { const k = normKey(c.subject) || c.id; (clusters[k] = clusters[k] || []).push(c); });
 
-  // stories
-  el('ov-stories-list').innerHTML = stories.length
-    ? stories.map(s => `<div class="ov-row" style="cursor:pointer" onclick="setTab('stories')"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.hl)}</span><span class="cat-tag cat-${esc(s.cat)}" style="flex-shrink:0;margin-left:8px">${(CATS[s.cat] || s.cat).split(' &')[0].split(' and ')[0]}</span></div>`).join('')
-    : '<div class="ov-muted">No stories written yet. Group clips into stories for the report.</div>';
+  const existing = new Set(S.day.stories.map(s => normKey(s.hl)));
+  let made = 0;
+  Object.values(clusters).forEach(group => {
+    // representative = the longest caption/title in the cluster
+    const rep = group.slice().sort((a, b) => (b.subject || '').length - (a.subject || '').length)[0];
+    const hlFull = (rep.subject || '').trim();
+    const hl = hlFull.length > 130 ? hlFull.slice(0, 130) + '…' : hlFull;
+    if (!hl || existing.has(normKey(hl))) return;
+    existing.add(normKey(hl));
 
-  // latest clips
-  el('ov-latest').innerHTML = clips.length
-    ? clips.slice(0, 6).map(c => `<div class="ov-clip">
-        <div class="th">${c.shot ? `<img src="${esc(shotSrc(c))}" referrerpolicy="no-referrer" onerror="this.parentNode.textContent='📰'">` : '📰'}</div>
-        <div class="meta"><div class="p">${esc(c.pub)}${c.plat ? ' · ' + esc(c.plat) : ''} ${isHigh(c) ? '<span class="tr-chip tr-high">' + c.traction.replace('_', ' ') + '</span>' : ''}</div>
-        <div class="s">${esc(c.subject || '')}</div></div></div>`).join('')
-    : '<div class="ov-muted">No clips yet.</div>';
+    // category = most common in the cluster
+    const catCount = {}; group.forEach(c => { catCount[c.cat] = (catCount[c.cat] || 0) + 1; });
+    const cat = Object.entries(catCount).sort((a, b) => b[1] - a[1])[0][0];
+
+    const reported = uniq(group.filter(c => !c.plat).map(c => c.pub)).join(', ');
+    const published = uniq(group.filter(c => c.plat).map(c => `${c.pub} (${c.plat})`)).join(', ');
+    const tr = group.map(c => c.traction).filter(Boolean).sort((a, b) => TR_RANK[b] - TR_RANK[a])[0] || '';
+
+    S.day.stories.push({
+      id: 's' + Date.now().toString(36) + made, cat, hl,
+      summary: hlFull, reported, syndicated: '', published,
+      trInt: tr, trCom: '', trNote: '', auto: true,
+    });
+    made++;
+  });
+  if (made) persist();
+  renderStories(); badges();
+  if (!silent) toast(made ? `Generated ${made} story draft${made > 1 ? 's' : ''} from clips. Edit as needed.` : 'All clips already have stories.');
+  return made;
+}
+
+/* ════════════════════ REPORT SETTINGS MODAL ════════════════════ */
+function openReportModal() {
+  fillCfgInputs();
+  el('report-modal').classList.remove('hidden');
+}
+function saveReportCfg() {
+  S.day.cfg = {
+    num: el('cfg-num').value.trim(), date: el('cfg-date').value.trim(),
+    highlights: el('cfg-highlights').value, issues: el('cfg-issues').value, fyi: el('cfg-fyi').value,
+  };
+  persist();
+  closeModal('report-modal');
 }
 
 /* ════════════════════ CLIPS ════════════════════ */
@@ -1016,7 +1020,7 @@ function renderClips() {
         <button class="btn btn-sm" onclick="storyFromClip('${esc(c.id)}')">→ Story</button>
         <button class="btn btn-sm btn-ghost" onclick="snapClip('${esc(c.id)}')">${c.shot ? '📷 Re-snap' : '📷 Snap'}</button>
         <button class="btn btn-sm btn-ghost" onclick="editClip('${esc(c.id)}')">Edit</button>
-        <button class="btn btn-sm btn-ghost" style="color:var(--verm)" onclick="delClip('${esc(c.id)}')">Delete</button>
+        <button class="btn btn-sm btn-ghost" style="color:#c0392b" onclick="delClip('${esc(c.id)}')">Delete</button>
       </div>
     </div>`).join('');
 }
@@ -1034,7 +1038,7 @@ async function snapClip(id, silent) {
     c.shot = res.shot;
     c.shotAt = Date.now();
     persist();
-    renderClips(); if (S.tab === 'overview') renderOverview();
+    renderClips();
     if (!silent) toast('Hero shot captured.');
     return true;
   } catch (e) {
@@ -1061,7 +1065,7 @@ async function snapAllClips() {
   fl.classList.remove('hidden');
   let done = 0, fail = 0;
   for (const c of missing) {
-    fl.innerHTML = `<div class="spinner"></div><span>📷 Capturing hero shots — ${done + fail + 1} of ${missing.length} (${esc(c.pub)})…</span>`;
+    fl.innerHTML = `<div class="spinner"></div><span>📷 Capturing hero shots · ${done + fail + 1} of ${missing.length} (${esc(c.pub)})…</span>`;
     (await snapClip(c.id, true)) ? done++ : fail++;
   }
   fl.innerHTML = `<span>✅ Hero shots: <b>${done} captured</b>${fail ? `, <span style="color:var(--verm)">${fail} failed</span> (snap those individually)` : ''}.</span>
@@ -1139,7 +1143,7 @@ function renderStories() {
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="btn btn-sm btn-ghost" onclick="editStory('${esc(s.id)}')">Edit</button>
-          <button class="btn btn-sm btn-ghost" style="color:var(--verm)" onclick="delStory('${esc(s.id)}')">Delete</button>
+          <button class="btn btn-sm btn-ghost" style="color:#c0392b" onclick="delStory('${esc(s.id)}')">Delete</button>
         </div>
       </div>
       <div class="story-sum">${esc(s.summary) || '<em>No summary yet</em>'}</div>
@@ -1202,12 +1206,6 @@ function fillCfgInputs() {
   el('cfg-fyi').value = S.day.cfg.fyi || '';
 }
 
-function cfgChanged() {
-  S.day.cfg = { num: el('cfg-num').value.trim(), date: el('cfg-date').value.trim(),
-    highlights: el('cfg-highlights').value, issues: el('cfg-issues').value, fyi: el('cfg-fyi').value };
-  persist(); renderReport();
-}
-
 function storyBlockHtml(s, i) {
   let meta = '';
   if (s.reported) {
@@ -1227,7 +1225,7 @@ function reportHtml() {
   const cfg = S.day.cfg;
   const bar = t => `<div style="background:#16263d;color:#fff;font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:5px 10px;margin:0 0 12px">${t}</div>`;
   let h = `<div style="text-align:right;font-size:11px;font-weight:700;color:#555">${esc(cfg.num) || '___/2026'}</div>
-    <div style="text-align:center;font-weight:900;font-size:15.5px;text-transform:uppercase;color:#16263d;letter-spacing:.4px;margin:6px 0 22px">Media Monitoring Report –<br>${esc(cfg.date) || '[Date]'}</div>`;
+    <div style="text-align:center;font-weight:900;font-size:15.5px;text-transform:uppercase;color:#16263d;letter-spacing:.4px;margin:6px 0 22px">Media Monitoring Report<br>${esc(cfg.date) || '[Date]'}</div>`;
   h += `<div style="margin-bottom:24px">${bar('News Highlights')}<pre style="font-family:inherit;white-space:pre-wrap">${esc(cfg.highlights) || '1. XXX'}</pre></div>`;
   const issues = (S.day.stories || []).filter(s => s.cat === 'issues');
   h += `<div style="margin-bottom:24px"><div style="color:#c0391b;font-weight:800;font-size:12.5px;margin-bottom:10px">Issues Monitoring</div>`;
@@ -1247,15 +1245,26 @@ function reportHtml() {
   return h;
 }
 
-function renderReport() { el('report-preview').innerHTML = reportHtml(); }
-
+// Combined export: the stories report, then the clips log, in one PDF.
 function printReport() {
+  const missing = (S.day.clips || []).filter(c => !c.shot && c.link).length;
+  if (missing && confirm(`${missing} clip${missing > 1 ? 's have' : ' has'} no screenshot yet. Capture them before the report? (Cancel exports without them)`)) {
+    snapAllClips().then(() => printReport());
+    return;
+  }
+  const clipsSection = (S.day.clips || []).length
+    ? `<div style="page-break-before:always"></div><div style="background:#16263d;color:#fff;font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:5px 10px;margin:0 0 16px">News Clips</div>${clipsLogBlocks()}`
+    : '';
   const win = window.open('', '_blank');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SPS Media Monitoring Report</title>
-    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,system-ui,sans-serif;color:#1c2b3a;font-size:11.5pt;line-height:1.65;padding:34px 44px}pre{font-family:inherit;white-space:pre-wrap}ul{margin-left:18px}</style>
-    </head><body>${reportHtml()}</body></html>`);
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SPS Media Monitoring Report · ${esc(S.date)}</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,system-ui,sans-serif;color:#1c2b3a;font-size:11.5pt;line-height:1.65;padding:34px 44px}pre{font-family:inherit;white-space:pre-wrap}ul{margin-left:18px}
+    .pg{page-break-after:always;padding-top:8px} table.clip{border-collapse:collapse;width:100%} table.clip td{vertical-align:top;padding:2px 0}
+    table.clip td.l{font-weight:700;width:110px} a{color:#2471a3;word-break:break-all}
+    .rule{border-bottom:3px solid #1c2b3a;margin:10px 0 14px} .note{color:#9aa7b4;font-size:10pt;font-style:italic}
+    img.shot{display:block;max-width:430px;max-height:640px;object-fit:contain;border:1px solid #d6d0c2}</style>
+    </head><body>${reportHtml()}${clipsSection}</body></html>`);
   win.document.close(); win.focus();
-  setTimeout(() => win.print(), 500);
+  setTimeout(() => win.print(), 600);
 }
 
 function storyTextBlock(s, i) {
@@ -1270,7 +1279,7 @@ function storyTextBlock(s, i) {
 
 function copyReport() {
   const cfg = S.day.cfg;
-  let t = `${cfg.num}\n\nMEDIA MONITORING REPORT –\n${cfg.date}\n\nNews Highlights\n\n${cfg.highlights || '1. XXX'}\n\nIssues Monitoring\n\n`;
+  let t = `${cfg.num}\n\nMEDIA MONITORING REPORT\n${cfg.date}\n\nNews Highlights\n\n${cfg.highlights || '1. XXX'}\n\nIssues Monitoring\n\n`;
   const issues = (S.day.stories || []).filter(s => s.cat === 'issues');
   t += issues.length ? issues.map(storyTextBlock).join('') : (cfg.issues || '1. XXX') + '\n\n';
   ['daily_news', 'yellow_ribbon', 'care_network', 'social_updates'].forEach(cat => {
@@ -1285,31 +1294,35 @@ function copyReport() {
 }
 
 /* ════════════════════ CLIPS LOG PRINT ════════════════════ */
+// One page per clip (Date / Publication / Subject / Link + screenshot).
+function clipsLogBlocks() {
+  const fmt = d => { const dt = new Date(d + 'T00:00:00'); return isNaN(dt) ? d : dt.toLocaleDateString('en-SG', { day: 'numeric', month: 'long', year: 'numeric' }); };
+  return [...(S.day.clips || [])].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(c => `
+    <div class="pg"><table class="clip">
+      <tr><td class="l">Date:</td><td>${esc(fmt(c.date))}</td></tr>
+      <tr><td class="l">Publication:</td><td>${esc(c.pub)}${c.plat ? ' (' + esc(c.plat) + ')' : ''}</td></tr>
+      <tr><td class="l">Subject:</td><td>${esc(c.subject || '-')}</td></tr>
+      <tr><td class="l">Link:</td><td>${c.link ? `<a href="${esc(c.link)}">${esc(c.link)}</a>` : '-'}</td></tr>
+    </table><div class="rule"></div>
+    ${c.shot ? `<img class="shot" referrerpolicy="no-referrer" src="${/^https?:/.test(c.shot) ? esc(c.shot) : location.origin + '/' + esc(c.shot)}">` : '<div class="note">[ No screenshot captured ]</div>'}</div>`).join('');
+}
+
 function printClipsLog() {
   const clips = S.day.clips || [];
   if (!clips.length) { toast('No clips to print for this day.'); return; }
-  const fmt = d => { const dt = new Date(d + 'T00:00:00'); return isNaN(dt) ? d : dt.toLocaleDateString('en-SG', { day: 'numeric', month: 'long', year: 'numeric' }); };
   const missing = clips.filter(c => !c.shot && c.link).length;
-  if (missing && confirm(`${missing} clip${missing > 1 ? 's have' : ' has'} no hero shot yet. Capture them first? (Recommended — Cancel prints without them)`)) {
+  if (missing && confirm(`${missing} clip${missing > 1 ? 's have' : ' has'} no screenshot yet. Capture them first? (Cancel prints without them)`)) {
     snapAllClips().then(() => printClipsLog());
     return;
   }
-  const blocks = [...clips].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(c => `
-    <div class="pg"><table>
-      <tr><td class="l">Date:</td><td>${esc(fmt(c.date))}</td></tr>
-      <tr><td class="l">Publication:</td><td>${esc(c.pub)}${c.plat ? ' (' + esc(c.plat) + ')' : ''}</td></tr>
-      <tr><td class="l">Subject:</td><td>${esc(c.subject || '–')}</td></tr>
-      <tr><td class="l">Link:</td><td>${c.link ? `<a href="${esc(c.link)}">${esc(c.link)}</a>` : '–'}</td></tr>
-    </table><div class="rule"></div>
-    ${c.shot ? `<img class="shot" referrerpolicy="no-referrer" src="${/^https?:/.test(c.shot) ? esc(c.shot) : location.origin + '/' + esc(c.shot)}">` : '<div class="note">[ No hero shot captured ]</div>'}</div>`).join('');
   const win = window.open('', '_blank');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SPS News Clips — ${esc(S.date)}</title><style>
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SPS News Clips · ${esc(S.date)}</title><style>
     *{margin:0;padding:0;box-sizing:border-box} body{font-family:system-ui,sans-serif;font-size:11pt;color:#1c2b3a;padding:30px 40px;line-height:1.55}
-    .pg{page-break-after:always;padding-top:8px} table{border-collapse:collapse;width:100%} td{vertical-align:top;padding:2px 0}
+    .pg{page-break-after:always;padding-top:8px} table.clip{border-collapse:collapse;width:100%} table.clip td{vertical-align:top;padding:2px 0}
     td.l{font-weight:700;width:110px} a{color:#2471a3;word-break:break-all}
     .rule{border-bottom:3px solid #1c2b3a;margin:10px 0 14px} .note{color:#9aa7b4;font-size:10pt;font-style:italic}
     img.shot{display:block;max-width:430px;max-height:640px;object-fit:contain;border:1px solid #d6d0c2}
-  </style></head><body>${blocks}</body></html>`);
+  </style></head><body>${clipsLogBlocks()}</body></html>`);
   win.document.close(); win.focus();
   setTimeout(() => win.print(), 500);
 }
@@ -1365,7 +1378,7 @@ async function saveKeywords() {
   try {
     await api('/api/keywords', S.keywords);
     closeModal('kw-modal');
-    toast('Keywords saved — they apply on the next fetch.');
+    toast('Keywords saved · they apply on the next fetch.');
   } catch (e) { toast('Could not save: ' + e.message); }
 }
 
