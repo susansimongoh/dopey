@@ -370,3 +370,28 @@ export async function ogImage(link) {
   if (!m) throw new Error('no og:image');
   return decode(m[1]);
 }
+
+// ── Gemini: rewrite clip clusters into journalist-style summaries ─────────
+const GEMINI_MODEL = 'gemini-2.5-flash';
+
+export async function summarizeItems(items) {
+  const key = Netlify.env.get('GEMINI_API_KEY');
+  if (!key) throw new Error('GEMINI_API_KEY not set');
+  const prompt = `You are a media-monitoring analyst preparing the Singapore Prison Service (SPS) daily media monitoring report.
+For each item below (a social media post or news article, sometimes several related clips of the same story), produce:
+- "headline": one concise line in sentence case. No emoji, hashtags, slang or quotation marks.
+- "summary": a neutral, third-person summary of 1 to 3 sentences in the style of an official media monitoring report. Begin by naming the publisher/account and what they did, e.g. "Prison Fellowship Singapore published a Facebook post inviting followers to its Prison Ministry Conference...". Summarise the substance and key facts (who/what/when). Do NOT copy the caption verbatim; strip emoji, hashtags and internet slang; do not editorialise or add opinion.
+Return ONLY a JSON array, one object per item, each with keys "key", "headline", "summary". Use the exact "key" given for each item.
+
+Items:
+${JSON.stringify(items)}`;
+  const body = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, responseMimeType: 'application/json' } };
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error('Gemini ' + r.status + ' ' + (await r.text()).slice(0, 200));
+  const data = await r.json();
+  let txt = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '[]';
+  txt = txt.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+  return JSON.parse(txt);
+}

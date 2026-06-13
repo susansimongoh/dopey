@@ -1,6 +1,6 @@
 // Synchronous API: fast Supabase-backed operations.
 // Heavy fetching lives in the *-background functions.
-import { getDay, putDay, listDays, getWatchlist, putWatchlist, ogImage } from '../lib/sps.mjs';
+import { getDay, putDay, listDays, getWatchlist, putWatchlist, ogImage, summarizeItems } from '../lib/sps.mjs';
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -34,6 +34,12 @@ export default async (req) => {
       await putDay(day);
       return json({ ok: true, saved: day.date });
     }
+    if (req.method === 'POST' && path === '/api/summarize') {
+      const { items } = await req.json();
+      if (!items || !items.length) return json({ ok: true, results: [] });
+      try { return json({ ok: true, results: await summarizeItems(items) }); }
+      catch (e) { return json({ ok: false, error: String(e).slice(0, 200) }); }
+    }
     if (req.method === 'POST' && path === '/api/snap') {
       // Cloud "snap" = resolve a hero image URL (no Chrome). Stateless:
       // the client stores the returned URL on the clip and persists.
@@ -49,5 +55,5 @@ export default async (req) => {
 };
 
 export const config = {
-  path: ['/api/status', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/snap'],
+  path: ['/api/status', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/snap', '/api/summarize'],
 };

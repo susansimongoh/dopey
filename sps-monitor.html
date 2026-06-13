@@ -879,9 +879,11 @@ async function doFetch(force, auto) {
       if (!res.ok) throw new Error(res.error);
       S.day = res.day;
     }
-    const before = clipCount; const added = (S.day.clips || []).length - before;
-    generateStories(true); renderMasthead(); renderAll(); refreshLedgerCounts(); snapMissing();
-    fl.innerHTML = `<span>✅ <b>Fetch complete</b> · <b>${added} new clip${added === 1 ? '' : 's'}</b> collected (${(S.day.clips || []).length} total).${(S.day.fetch_errors || []).length ? ' <span style="color:var(--verm)">(' + S.day.fetch_errors.length + ' source errors)</span>' : ''}</span>
+    const added = (S.day.clips || []).length - clipCount;
+    renderMasthead(); renderAll(); refreshLedgerCounts(); snapMissing();
+    fl.innerHTML = `<div class="spinner"></div><span>✍️ Writing story summaries from the new clips…</span>`;
+    const stMade = await generateStories(true);
+    fl.innerHTML = `<span>✅ <b>Fetch complete</b> · <b>${added} new clip${added === 1 ? '' : 's'}</b> collected, <b>${stMade} stor${stMade === 1 ? 'y' : 'ies'}</b> drafted.${(S.day.fetch_errors || []).length ? ' <span style="color:var(--verm)">(' + S.day.fetch_errors.length + ' source errors)</span>' : ''}</span>
       <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
     setTimeout(() => fl.classList.add('hidden'), 6000);
   } catch (e) {
@@ -912,9 +914,11 @@ async function doSocialFetch(force) {
       S.day = res.day;
     }
     const added = (S.day.clips || []).length - clipCount;
-    generateStories(true); renderMasthead(); renderAll(); refreshLedgerCounts(); snapMissing();
+    renderMasthead(); renderAll(); refreshLedgerCounts(); snapMissing();
+    fl.innerHTML = `<div class="spinner"></div><span>✍️ Writing story summaries from the new clips…</span>`;
+    const stMade = await generateStories(true);
     const errs = (S.day.social_errors || []);
-    fl.innerHTML = `<span>✅ <b>Social sweep complete</b> · <b>${added} new clip${added === 1 ? '' : 's'}</b> collected (${(S.day.clips || []).length} total).${errs.length ? ' <span style="color:var(--verm)">(' + esc(errs.join(' · ')) + ')</span>' : ''}</span>
+    fl.innerHTML = `<span>✅ <b>Social sweep complete</b> · <b>${added} new clip${added === 1 ? '' : 's'}</b> collected, <b>${stMade} stor${stMade === 1 ? 'y' : 'ies'}</b> drafted.${errs.length ? ' <span style="color:var(--verm)">(' + esc(errs.join(' · ')) + ')</span>' : ''}</span>
       <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
     if (!errs.length) setTimeout(() => fl.classList.add('hidden'), 7000);
   } catch (e) {
@@ -945,10 +949,12 @@ const TR_RANK = { very_high: 4, high: 3, moderate: 2, low: 1, very_low: 0 };
 function normKey(s) { return (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 3).slice(0, 6).join(' '); }
 function uniq(a) { return [...new Set(a.filter(Boolean))]; }
 
-// Cluster the day's clips by subject similarity and draft a story per cluster.
-// Skips clusters that already have a matching story, so it's safe to re-run
-// (and to call automatically after a fetch) without clobbering edits.
-function generateStories(silent) {
+// Cluster the day's clips by subject similarity, then rewrite each new cluster
+// into a journalist-style story via Gemini (/api/summarize). Skips clusters that
+// already produced a story (tracked by srcKey) so it's safe to re-run and to
+// call automatically after a fetch without clobbering edits. Falls back to the
+// cleaned caption if the LLM is unavailable.
+async function generateStories(silent) {
   const clips = S.day.clips || [];
   if (!clips.length) { if (!silent) toast('No clips to generate from.'); return 0; }
   S.day.stories = S.day.stories || [];
@@ -956,27 +962,41 @@ function generateStories(silent) {
   const clusters = {};
   clips.forEach(c => { const k = normKey(c.subject) || c.id; (clusters[k] = clusters[k] || []).push(c); });
 
-  const existing = new Set(S.day.stories.map(s => normKey(s.hl)));
-  let made = 0;
-  Object.values(clusters).forEach(group => {
-    // representative = the longest caption/title in the cluster
-    const rep = group.slice().sort((a, b) => (b.subject || '').length - (a.subject || '').length)[0];
-    const hlFull = (rep.subject || '').trim();
-    const hl = hlFull.length > 130 ? hlFull.slice(0, 130) + '…' : hlFull;
-    if (!hl || existing.has(normKey(hl))) return;
-    existing.add(normKey(hl));
+  const done = new Set(S.day.stories.map(s => s.srcKey).filter(Boolean));
+  const todo = Object.entries(clusters).filter(([k]) => !done.has(k));
+  if (!todo.length) { if (!silent) toast('All clips already have stories.'); return 0; }
 
-    // category = most common in the cluster
+  // ask Gemini to rewrite each new cluster (one batched call)
+  let summaries = {};
+  try {
+    const items = todo.map(([k, group]) => ({
+      key: k,
+      pub: uniq(group.map(c => c.pub)).join(', '),
+      platforms: uniq(group.map(c => c.plat).filter(Boolean)).join(', '),
+      texts: group.map(c => c.subject).filter(Boolean),
+    }));
+    const res = await api('/api/summarize', { items });
+    if (res.ok) (res.results || []).forEach(r => { summaries[r.key] = r; });
+  } catch (e) { /* fall back to caption below */ }
+
+  let made = 0;
+  todo.forEach(([k, group]) => {
+    const rep = group.slice().sort((a, b) => (b.subject || '').length - (a.subject || '').length)[0];
+    const capt = (rep.subject || '').trim();
+    const sum = summaries[k];
+    const hl = (sum && sum.headline) ? sum.headline : (capt.length > 130 ? capt.slice(0, 130) + '…' : capt);
+    const summary = (sum && sum.summary) ? sum.summary : capt;
+    if (!hl) return;
+
     const catCount = {}; group.forEach(c => { catCount[c.cat] = (catCount[c.cat] || 0) + 1; });
     const cat = Object.entries(catCount).sort((a, b) => b[1] - a[1])[0][0];
-
     const reported = uniq(group.filter(c => !c.plat).map(c => c.pub)).join(', ');
     const published = uniq(group.filter(c => c.plat).map(c => `${c.pub} (${c.plat})`)).join(', ');
     const tr = group.map(c => c.traction).filter(Boolean).sort((a, b) => TR_RANK[b] - TR_RANK[a])[0] || '';
 
     S.day.stories.push({
-      id: 's' + Date.now().toString(36) + made, cat, hl,
-      summary: hlFull, reported, syndicated: '', published,
+      id: 's' + Date.now().toString(36) + made, srcKey: k, cat, hl,
+      summary, reported, syndicated: '', published,
       trInt: tr, trCom: '', trNote: '', auto: true,
     });
     made++;
