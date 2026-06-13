@@ -100,31 +100,11 @@ def load_day(date):
 
 
 def save_day(day):
+    # Local launcher is fully local: writes to data/<date>.json only.
+    # It deliberately does NOT sync to Supabase — the cloud site (spsmedia.netlify.app)
+    # owns the Supabase archive, so local testing can't overwrite cloud days.
     with open(day_path(day['date']), 'w') as f:
         json.dump(day, f, ensure_ascii=False, indent=1)
-    sync_to_supabase(day)
-
-
-def sync_to_supabase(day):
-    """Background upsert of the day file to the SPS Supabase project."""
-    s = load_secrets()
-    if not s.get('supabase_url') or not s.get('supabase_anon_key'):
-        return
-    def _push():
-        try:
-            body = json.dumps([{'date': day['date'], 'payload': day,
-                                'updated_at': datetime.now(timezone.utc).isoformat()}]).encode()
-            req = urllib.request.Request(
-                s['supabase_url'] + '/rest/v1/monitor_days',
-                data=body, method='POST',
-                headers={'apikey': s['supabase_anon_key'],
-                         'Authorization': 'Bearer ' + s['supabase_anon_key'],
-                         'Content-Type': 'application/json',
-                         'Prefer': 'resolution=merge-duplicates'})
-            urllib.request.urlopen(req, timeout=20)
-        except Exception:
-            pass   # cloud sync is best-effort; local file is the source of truth
-    threading.Thread(target=_push, daemon=True).start()
 
 
 def item_id(link):
@@ -671,8 +651,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         elif self.path == '/api/status':
             s = load_secrets()
+            # supabase:false — local launcher saves to disk only, never to the cloud DB
             self._json({'apify': bool(s.get('apify_token')),
-                        'supabase': bool(s.get('supabase_url') and s.get('supabase_anon_key')),
+                        'supabase': False,
                         'mode': 'local'})
 
         else:
