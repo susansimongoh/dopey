@@ -1,0 +1,169 @@
+{
+  "tier": "2",
+  "description": "Semi-automated monitoring of SPS-aligned organizations (Yellow Ribbon, SANA, SACA, Prison Fellowship, etc.)",
+  "refreshInterval": "daily",
+  "category": "CARE Network Partners",
+  "sources": {
+    "yellow_ribbon": {
+      "name": "Yellow Ribbon Singapore",
+      "description": "Primary rehab and reintegration partner",
+      "platforms": {
+        "facebook": {
+          "handle": "yellowribbonsg",
+          "actor": "facebook-comments-reactions",
+          "keywords": ["Yellow Ribbon", "reintegration", "rehabilitation", "second chances", "YRCP"]
+        },
+        "instagram": {
+          "handle": "yellowribbonsg",
+          "actor": "instagram-scraper",
+          "keywords": ["Yellow Ribbon", "reintegration", "YRCP"]
+        },
+        "tiktok": {
+          "handle": "@yellowribbonsg",
+          "actor": "tiktok-video-scraper",
+          "keywords": ["Yellow Ribbon", "reintegration"]
+        },
+        "youtube": {
+          "channel": "Yellow Ribbon Singapore",
+          "actor": "youtube-scraper",
+          "keywords": ["Yellow Ribbon"]
+        }
+      }
+    },
+    "sana": {
+      "name": "Singapore Anti-Narcotics Association (SANA)",
+      "description": "Anti-drug outreach and Yellow Ribbon Community Project (YRCP)",
+      "platforms": {
+        "facebook": {
+          "handle": "sasingapore",
+          "actor": "facebook-comments-reactions",
+          "keywords": ["SANA", "Yellow Ribbon", "YRCP", "drug prevention"]
+        },
+        "instagram": {
+          "handle": "sasingapore",
+          "actor": "instagram-scraper",
+          "keywords": ["SANA", "Yellow Ribbon", "YRCP"]
+        },
+        "linkedin": {
+          "handle": "singapore-anti-narcotics-association",
+          "actor": "linkedin-scraper",
+          "keywords": ["SANA", "drug prevention"]
+        }
+      }
+    },
+    "saca": {
+      "name": "Singapore After-Care Association (SACA)",
+      "description": "Rehabilitation services for released inmates",
+      "platforms": {
+        "facebook": {
+          "handle": "sacarehab",
+          "actor": "facebook-comments-reactions",
+          "keywords": ["SACA", "rehabilitation", "reintegration", "after-care"]
+        },
+        "instagram": {
+          "handle": "sacarehab",
+          "actor": "instagram-scraper",
+          "keywords": ["SACA", "rehabilitation"]
+        }
+      }
+    },
+    "prison_fellowship": {
+      "name": "Prison Fellowship Singapore",
+      "description": "Faith-based prison outreach and reintegration support",
+      "platforms": {
+        "facebook": {
+          "handle": "prisfellowship",
+          "actor": "facebook-comments-reactions",
+          "keywords": ["Prison Fellowship", "reintegration", "rehabilitation"]
+        },
+        "instagram": {
+          "handle": "prisfellowship",
+          "actor": "instagram-scraper",
+          "keywords": ["Prison Fellowship"]
+        },
+        "youtube": {
+          "channel": "Prison Fellowship Singapore",
+          "actor": "youtube-scraper",
+          "keywords": ["Prison Fellowship"]
+        }
+      }
+    },
+    "the_common_folks": {
+      "name": "The Common Folks",
+      "description": "Community organization supporting vulnerable groups including ex-offenders",
+      "platforms": {
+        "facebook": {
+          "handle": "thecommonfolks",
+          "actor": "facebook-comments-reactions",
+          "keywords": ["The Common Folks", "reintegration", "vulnerable groups"]
+        },
+        "instagram": {
+          "handle": "thecommonfolks",
+          "actor": "instagram-scraper",
+          "keywords": ["Common Folks"]
+        },
+        "tiktok": {
+          "handle": "@thecommonfolks",
+          "actor": "tiktok-video-scraper",
+          "keywords": ["Common Folks"]
+        },
+        "youtube": {
+          "channel": "The Common Folks",
+          "actor": "youtube-scraper",
+          "keywords": ["Common Folks"]
+        }
+      }
+    },
+    "gutzy_asia": {
+      "name": "Gutzy Asia",
+      "description": "News platform covering social justice issues",
+      "platforms": {
+        "facebook": {
+          "handle": "gutzyasia",
+          "actor": "facebook-comments-reactions",
+          "keywords": ["Gutzy", "social justice", "Singapore"]
+        },
+        "youtube": {
+          "channel": "Gutzy Asia",
+          "actor": "youtube-scraper",
+          "keywords": ["Gutzy"]
+        }
+      }
+    }
+  },
+  "actor_mapping": {
+    "facebook-comments-reactions": "https://apify.com/apify/facebook-comments-reactions",
+    "instagram-scraper": "https://apify.com/bnkysz/instagram-scraper",
+    "tiktok-video-scraper": "https://apify.com/clockworks/tiktok-video-scraper",
+    "youtube-scraper": "https://apify.com/apify/youtube-scraper",
+    "linkedin-scraper": "https://apify.com/apify/linkedin-scraper"
+  },
+  "collection_strategy": {
+    "frequency": "daily",
+    "best_times_to_run": [
+      "08:00 AM SGT - Morning briefing prep",
+      "05:00 PM SGT - Evening round-up"
+    ],
+    "collect": [
+      "Post text/caption",
+      "Engagement metrics (likes, comments, shares, views)",
+      "Post date/time",
+      "URLs and media attachments",
+      "Comments (top 5-10) for sentiment analysis"
+    ]
+  },
+  "categorization": {
+    "yellow_ribbon": "Yellow Ribbon News",
+    "sana": "Care Network",
+    "saca": "Care Network",
+    "prison_fellowship": "Care Network",
+    "the_common_folks": "Care Network",
+    "gutzy_asia": "Daily News"
+  },
+  "notes": {
+    "priority": "Tier 2 is semi-automated - configure once per organization, runs daily. Less intensive monitoring than Tier 1 activist accounts.",
+    "instagram_limitations": "Instagram has stricter rate limits. Consider spacing requests 2-3 seconds apart.",
+    "tiktok_public_data": "TikTok public profiles don't require auth for view counts, likes, comments",
+    "facebook_page_limits": "May hit rate limits if collecting large amounts of historical data. Focus on recent posts (last 7 days)."
+  }
+}

@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPS Media Monitor</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --navy: #0d1b2a;
+  --navy2: #1a3050;
+  --red: #c0392b;
+  --red2: #e74c3c;
+  --blue: #2471a3;
+  --green: #1e8449;
+  --bg: #f8f9fb;
+  --card: #fff;
+  --border: #e2e8f0;
+  --text: #1c2b3a;
+  --muted: #6b7a8d;
+  --sidebar: 240px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  font-size: 14px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SIDEBAR
+   ═══════════════════════════════════════════════════════════ */
+.sidebar {
+  width: var(--sidebar);
+  background: var(--navy);
+  min-height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  border-right: 1px solid rgba(255,255,255,.06);
+}
+
+.sb-logo {
+  padding: 24px 20px 20px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.sb-logo .agency {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.4);
+  margin-bottom: 4px;
+}
+
+.sb-logo .product {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.sb-logo .client-tag {
+  display: inline-block;
+  margin-top: 10px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  padding: 3px 9px;
+  border-radius: 4px;
+}
+
+.sb-meta {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.sb-meta .today {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255,255,255,.75);
+  margin-bottom: 3px;
+}
+
+.sb-meta .rpt {
+  font-size: 10px;
+  color: rgba(255,255,255,.35);
+}
+
+.sb-nav {
+  flex: 1;
+  padding: 12px 0;
+  overflow-y: auto;
+}
+
+.nav-group {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.3);
+  padding: 14px 20px 6px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  cursor: pointer;
+  color: rgba(255,255,255,.55);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all .15s;
+  border-left: 3px solid transparent;
+  user-select: none;
+}
+
+.nav-item:hover {
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.9);
+}
+
+.nav-item.active {
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  border-left-color: var(--red);
+}
+
+.nav-item .ico {
+  font-size: 16px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.nav-badge {
+  margin-left: auto;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.sb-foot {
+  padding: 14px 20px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sb-action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: rgba(255,255,255,.5);
+  font-size: 12px;
+  font-weight: 600;
+  transition: all .15s;
+  border: 1px solid rgba(255,255,255,.1);
+}
+
+.sb-action:hover {
+  background: rgba(255,255,255,.08);
+  color: rgba(255,255,255,.85);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN CONTENT
+   ═══════════════════════════════════════════════════════════ */
+.main {
+  margin-left: var(--sidebar);
+  flex: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  padding: 14px 28px;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  gap: 20px;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.topbar-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+
+.topbar-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.content {
+  padding: 28px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BUTTONS & INTERACTIONS
+   ═══════════════════════════════════════════════════════════ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all .2s;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: var(--red);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--red2);
+  box-shadow: 0 4px 12px rgba(192, 57, 43, .2);
+}
+
+.btn-secondary {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--bg);
+  border-color: #cbd5e1;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 10px;
+}
+
+.btn-ghost:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.btn-danger:hover {
+  color: var(--red);
+  background: #fff0f0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BANNER
+   ═══════════════════════════════════════════════════════════ */
+.banner {
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.banner-green {
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+}
+
+.banner-blue {
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  color: #1d4ed8;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   STATS CARDS
+   ═══════════════════════════════════════════════════════════ */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  transition: all .2s;
+}
+
+.stat:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0,0,0,.04);
+}
+
+.stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.stat-val {
+  font-size: 32px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--text);
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.stat.red .stat-val { color: var(--red); }
+.stat.blue .stat-val { color: var(--blue); }
+.stat.green .stat-val { color: var(--green); }
+
+/* ═══════════════════════════════════════════════════════════
+   CARDS & SECTIONS
+   ═══════════════════════════════════════════════════════════ */
+.card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all .2s;
+}
+
+.card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0,0,0,.04);
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 16px;
+  letter-spacing: -0.2px;
+}
+
+.card-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TAGS & BADGES
+   ═══════════════════════════════════════════════════════════ */
+.tag {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tag-daily { background: #dbeafe; color: #1d4ed8; }
+.tag-yellow { background: #fef3c7; color: #92400e; }
+.tag-care { background: #d1fae5; color: #065f46; }
+.tag-social { background: #ede9fe; color: #5b21b6; }
+.tag-issues { background: #fee2e2; color: #991b1b; }
+.tag-fyi { background: #f3f4f6; color: #374151; }
+
+.platform-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #475569;
+  margin: 1px 2px 1px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CLIPS & STORIES
+   ═══════════════════════════════════════════════════════════ */
+.clips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.clip-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  transition: all .15s;
+}
+
+.clip-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0,0,0,.04);
+}
+
+.clip-thumb {
+  width: 140px;
+  flex-shrink: 0;
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 90px;
+}
+
+.clip-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+  transition: transform .2s;
+}
+
+.clip-thumb:hover img {
+  transform: scale(1.04);
+}
+
+.thumb-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0);
+  transition: .2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.clip-thumb:hover .thumb-overlay {
+  background: rgba(0,0,0,.28);
+}
+
+.zoom-ico {
+  color: #fff;
+  font-size: 20px;
+  opacity: 0;
+  transition: .2s;
+}
+
+.clip-thumb:hover .zoom-ico {
+  opacity: 1;
+}
+
+.plat-thumb {
+  width: 140px;
+  flex-shrink: 0;
+  min-height: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  padding: 8px;
+}
+
+.plat-thumb .pt-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.plat-thumb .pt-name {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.clip-body {
+  flex: 1;
+  padding: 12px 16px;
+  min-width: 0;
+}
+
+.clip-pub {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.clip-subject {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.45;
+  margin-bottom: 8px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.clip-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+
+.clip-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px;
+  border-left: 1px solid var(--border);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FILTER BUTTONS
+   ═══════════════════════════════════════════════════════════ */
+.filter-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.flt-btn {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  transition: all .15s;
+  user-select: none;
+}
+
+.flt-btn:hover,
+.flt-btn.active {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL
+   ═══════════════════════════════════════════════════════════ */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(3px);
+}
+
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px;
+  width: 100%;
+  max-width: 580px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.22);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.modal-lg { max-width: 700px; }
+.modal-xl { max-width: 900px; }
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 800;
+  margin-bottom: 20px;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 6px;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+  background: #fff;
+  font-family: inherit;
+  transition: all .15s;
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(36, 113, 163, .1);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UTILITIES
+   ═══════════════════════════════════════════════════════════ */
+.hidden { display: none !important; }
+.empty { text-align: center; padding: 50px 20px; color: var(--muted); }
+.empty-ico { font-size: 36px; margin-bottom: 10px; opacity: 0.35; }
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .sidebar { width: 0; }
+  .main { margin-left: 0; }
+  .stats-row { grid-template-columns: 1fr 1fr; }
+  .card-row { grid-template-columns: 1fr; }
+  .topbar { flex-direction: column; align-items: flex-start; }
+  .topbar-actions { width: 100%; }
+}
+
+@media print {
+  .sidebar, .topbar, .no-print { display: none !important; }
+  .main { margin-left: 0; }
+  body { background: #fff; }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sb-logo">
+    <div class="agency">That Marketing Guy</div>
+    <div class="product">Media Monitor</div>
+    <span class="client-tag">SPS</span>
+  </div>
+  <div class="sb-meta">
+    <div class="today" id="sb-today">–</div>
+    <div class="rpt" id="sb-rptnum">–</div>
+  </div>
+  <nav class="sb-nav">
+    <div class="nav-group">Workspace</div>
+    <div class="nav-item active" data-view="dashboard" onclick="nav('dashboard')"><span class="ico">📊</span> Dashboard</div>
+    <div class="nav-item" data-view="clips" onclick="nav('clips')"><span class="ico">📎</span> Clips<span class="nav-badge" id="badge-clips">0</span></div>
+    <div class="nav-item" data-view="stories" onclick="nav('stories')"><span class="ico">📝</span> Stories<span class="nav-badge" id="badge-stories">0</span></div>
+    <div class="nav-group">Output</div>
+    <div class="nav-item" data-view="report" onclick="nav('report')"><span class="ico">📄</span> Report</div>
+  </nav>
+  <div class="sb-foot">
+    <div class="sb-action" onclick="exportState()"><span>💾</span> Save Session</div>
+    <div class="sb-action" onclick="importState()"><span>📂</span> Load Session</div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+
+<!-- DASHBOARD VIEW -->
+<div id="view-dashboard">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div>
+        <div class="topbar-title">Dashboard</div>
+        <div class="topbar-sub" id="dash-sub">–</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-secondary btn-sm" onclick="openClipModal()">+ Add Clip</button>
+      <button class="btn btn-secondary btn-sm" onclick="openStoryModal()">+ Add Story</button>
+      <button class="btn btn-primary" onclick="nav('report')">Preview Report</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div id="auto-banner" class="banner banner-green hidden"><span>✅</span><span id="auto-banner-text"></span></div>
+
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-label">Total Clips</div>
+        <div class="stat-val" id="st-clips">0</div>
+        <div class="stat-sub">logged today</div>
+      </div>
+      <div class="stat red">
+        <div class="stat-label">Stories</div>
+        <div class="stat-val" id="st-stories">0</div>
+        <div class="stat-sub">summarised</div>
+      </div>
+      <div class="stat blue">
+        <div class="stat-label">High Traction</div>
+        <div class="stat-val" id="st-high">0</div>
+        <div class="stat-sub">stories to watch</div>
+      </div>
+      <div class="stat green">
+        <div class="stat-label">Report No.</div>
+        <div class="stat-val" style="font-size:16px;padding-top:3px" id="st-rpt">–</div>
+        <div class="stat-sub" id="st-rpt-sub">–</div>
+      </div>
+    </div>
+
+    <div class="card-row">
+      <div class="card">
+        <div class="card-title">Stories by Category</div>
+        <div id="dash-cats"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Latest Clips</div>
+        <div id="dash-recent"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Quick Actions</div>
+      <div class="card-actions">
+        <button class="btn btn-primary" onclick="openClipModal()">+ Add Clip</button>
+        <button class="btn btn-primary" onclick="openStoryModal()">+ Add Story</button>
+        <button class="btn btn-secondary" onclick="nav('report')">View Report</button>
+        <button class="btn btn-secondary" onclick="printReport()">Print / PDF</button>
+        <button class="btn btn-secondary" onclick="exportState()">Save Session</button>
+        <button class="btn btn-secondary" onclick="loadYesterdayData()" style="border-color:#93c5fd;color:#1d4ed8">📅 Load Yesterday</button>
+        <button class="btn btn-secondary" onclick="loadExampleDay()" style="border-color:#6ee7b7;color:#065f46">📅 Load Example</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CLIPS VIEW -->
+<div id="view-clips" class="hidden">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div>
+        <div class="topbar-title">Clips</div>
+        <div class="topbar-sub" id="clips-sub">–</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-secondary btn-sm" onclick="printClipsLog()">🖨 Print Clips Log</button>
+      <button class="btn btn-primary" onclick="openClipModal()">+ Add Clip</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="filter-row" id="clips-filters">
+      <button class="flt-btn active" onclick="setClipFilter('all',this)">All</button>
+      <button class="flt-btn" onclick="setClipFilter('daily_news',this)">Daily News</button>
+      <button class="flt-btn" onclick="setClipFilter('yellow_ribbon',this)">Yellow Ribbon</button>
+      <button class="flt-btn" onclick="setClipFilter('care_network',this)">CARE Network</button>
+      <button class="flt-btn" onclick="setClipFilter('social_updates',this)">Social Updates</button>
+      <button class="flt-btn" onclick="setClipFilter('issues',this)">Issues</button>
+      <button class="flt-btn" onclick="setClipFilter('fyi',this)">FYI</button>
+    </div>
+    <div class="clips-list" id="clips-list"></div>
+    <div id="clips-empty" class="empty hidden"><div class="empty-ico">📎</div><p>No clips yet</p></div>
+  </div>
+</div>
+
+<!-- STORIES VIEW -->
+<div id="view-stories" class="hidden">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div>
+        <div class="topbar-title">Stories</div>
+        <div class="topbar-sub" id="stories-sub">–</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" onclick="openStoryModal()">+ Add Story</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="filter-row" id="stories-filters">
+      <button class="flt-btn active" onclick="setStoryFilter('all',this)">All</button>
+      <button class="flt-btn" onclick="setStoryFilter('daily_news',this)">Daily News</button>
+      <button class="flt-btn" onclick="setStoryFilter('yellow_ribbon',this)">Yellow Ribbon</button>
+      <button class="flt-btn" onclick="setStoryFilter('care_network',this)">CARE Network</button>
+      <button class="flt-btn" onclick="setStoryFilter('social_updates',this)">Social Updates</button>
+      <button class="flt-btn" onclick="setStoryFilter('issues',this)">Issues</button>
+    </div>
+    <div id="story-list"></div>
+    <div id="stories-empty" class="empty hidden"><div class="empty-ico">📝</div><p>No stories yet</p></div>
+  </div>
+</div>
+
+<!-- REPORT VIEW -->
+<div id="view-report" class="hidden">
+  <div class="topbar no-print">
+    <div class="topbar-left">
+      <div>
+        <div class="topbar-title">Report Preview</div>
+        <div class="topbar-sub">SPS Morning Media Monitoring Report</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-secondary btn-sm" onclick="copyReport()">Copy Text</button>
+      <button class="btn btn-primary" onclick="printReport()">Print / PDF</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div style="display:flex;gap:20px;align-items:flex-start">
+      <div style="width:240px;flex-shrink:0;display:flex;flex-direction:column;gap:14px;position:sticky;top:80px" class="no-print">
+        <div class="card">
+          <div class="card-title">Report Settings</div>
+          <div class="form-group"><label class="form-label">Report Number</label><input class="form-input" id="cfg-num" type="text" placeholder="e.g. 101/2026"></div>
+          <div class="form-group"><label class="form-label">Date / Range</label><input class="form-input" id="cfg-date" type="text" placeholder="Tuesday, 3 June 2026"></div>
+          <div class="form-group"><label class="form-label">News Highlights</label><textarea class="form-textarea" id="cfg-highlights" style="min-height:80px" placeholder="1. Key headline"></textarea></div>
+          <div class="form-group"><label class="form-label">Issues Monitoring</label><textarea class="form-textarea" id="cfg-issues" style="min-height:60px" placeholder="1. Issue..."></textarea></div>
+          <div class="form-group"><label class="form-label">FYI News</label><textarea class="form-textarea" id="cfg-fyi" style="min-height:60px" placeholder="1. FYI..."></textarea></div>
+          <button class="btn btn-primary" style="width:100%" onclick="refreshReport()">Refresh Preview</button>
+        </div>
+      </div>
+      <div style="flex:1;background:#fff;border:1px solid var(--border);border-radius:12px;padding:40px 46px;font-size:12.5px;line-height:1.7;max-width:780px" id="report-preview">
+        <div class="empty" style="padding:60px 20px"><div class="empty-ico">📄</div><p>Click <strong>Refresh Preview</strong> to generate</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- CLIP MODAL -->
+<div class="overlay hidden" id="clip-modal">
+  <div class="modal">
+    <div class="modal-title" id="clip-modal-title">Add News Clip</div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="cm-date" type="date"></div>
+      <div class="form-group"><label class="form-label">Category</label>
+        <select class="form-select" id="cm-cat">
+          <option value="daily_news">Daily News</option>
+          <option value="yellow_ribbon">Yellow Ribbon News</option>
+          <option value="care_network">CARE Network</option>
+          <option value="social_updates">Social Media Updates</option>
+          <option value="issues">Issues Monitoring</option>
+          <option value="fyi">FYI</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Publication</label><input class="form-input" id="cm-pub" type="text" placeholder="e.g. CNA, AsiaOne"></div>
+      <div class="form-group"><label class="form-label">Platform</label>
+        <select class="form-select" id="cm-plat">
+          <option value="">Online / Website</option>
+          <option value="Facebook">Facebook</option>
+          <option value="Instagram">Instagram</option>
+          <option value="TikTok">TikTok</option>
+          <option value="X/Twitter">X / Twitter</option>
+          <option value="YouTube">YouTube</option>
+          <option value="LinkedIn">LinkedIn</option>
+          <option value="Reddit">Reddit</option>
+          <option value="Telegram">Telegram</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Subject / Caption</label><textarea class="form-textarea" id="cm-subject" placeholder="Paste the headline or post caption..."></textarea></div>
+    <div class="form-group">
+      <label class="form-label">Link / URL</label>
+      <input class="form-input" id="cm-link" type="text" placeholder="https://...">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('clip-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveClip()">Save Clip</button>
+    </div>
+  </div>
+</div>
+
+<!-- STORY MODAL -->
+<div class="overlay hidden" id="story-modal">
+  <div class="modal modal-lg">
+    <div class="modal-title" id="story-modal-title">Add Story</div>
+    <div class="form-group"><label class="form-label">Category</label>
+      <select class="form-select" id="sm-cat">
+        <option value="daily_news">Daily News</option>
+        <option value="yellow_ribbon">Yellow Ribbon News</option>
+        <option value="care_network">CARE Network & Community Partners</option>
+        <option value="social_updates">Social Media Updates – SPS</option>
+        <option value="issues">Issues Monitoring</option>
+        <option value="fyi">FYI News</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Headline</label><input class="form-input" id="sm-hl" type="text" placeholder="Story headline..."></div>
+    <div class="form-group"><label class="form-label">Summary</label><textarea class="form-textarea" id="sm-summary" style="min-height:90px" placeholder="Write the 2–3 sentence summary..."></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Reported By</label><input class="form-input" id="sm-reported" type="text" placeholder="CNA, Straits Times..."></div>
+      <div class="form-group"><label class="form-label">Syndicated By</label><input class="form-input" id="sm-syndicated" type="text" placeholder="Nestia News..."></div>
+    </div>
+    <div class="form-group"><label class="form-label">Published On</label><input class="form-input" id="sm-published" type="text" placeholder="CNA (Facebook), Straits Times (X)..."></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label" title="TikTok: Very High ≥400k views / ≥14k eng · High ≥100k / ≥3k · Moderate ≥40k / ≥850 · Low ≥20k / ≥350. Other platforms: High >300 combined reactions+comments+shares · Moderate 100–300 · Low <100 · Viral ≥1,500 in 3hrs">Traction – Interactions</label>
+        <select class="form-select" id="sm-tr-int">
+          <option value="">Not set</option>
+          <option value="very_high">Very High / Viral</option>
+          <option value="high">High</option>
+          <option value="moderate">Moderate</option>
+          <option value="low">Low</option>
+          <option value="very_low">Very Low</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Traction – Comments</label>
+        <select class="form-select" id="sm-tr-com">
+          <option value="">Not set</option>
+          <option value="very_high">Very High / Viral</option>
+          <option value="high">High</option>
+          <option value="moderate">Moderate</option>
+          <option value="low">Low</option>
+          <option value="very_low">Very Low</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Traction Note</label><textarea class="form-textarea" id="sm-tr-note" placeholder="Describe nature of comments, tone, observations..."></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('story-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveStory()">Save Story</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// [All the existing JavaScript from the original file - same functionality]
+// State, helpers, render functions, etc. stay exactly the same
+// Only the UI/CSS has been redesigned for better button organization
+
+const CATS = {
+  daily_news:'Daily News', yellow_ribbon:'Yellow Ribbon News',
+  care_network:'CARE Network & Community Partners',
+  social_updates:'Social Media Updates – SPS',
+  issues:'Issues Monitoring', fyi:'FYI News',
+};
+
+const CAT_TAG = {
+  daily_news:'tag-daily', yellow_ribbon:'tag-yellow', care_network:'tag-care',
+  social_updates:'tag-social', issues:'tag-issues', fyi:'tag-fyi',
+};
+
+window.S = { clips:[], stories:[], cfg:{num:'101/2026', date:'Wednesday, 3 June 2026', highlights:'1. XXX', issues:'1. XXX', fyi:'1. XXX'}, editClipId:null, editStoryId:null, clipFilter:'all', storyFilter:'all' };
+window.cid = 1;
+window.sid = 1;
+
+// ── Persistence ─────────────────────────────────────────────
+// Autosaves to localStorage on every change. When served by
+// launch_server.py (localhost:8765) it also saves to data/<date>.json
+// via the /api/save endpoint, which enables "Load Yesterday".
+const LS_KEY = 'sps-mm-state';
+
+function localDate() {
+  return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local (SGT) time
+}
+
+function snapshot() {
+  return { version: 1, date: localDate(), clips: S.clips, stories: S.stories, cfg: S.cfg };
+}
+
+function persist() {
+  const data = snapshot();
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch (e) {}
+  fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
+}
+
+function applyState(data) {
+  S.clips = []; S.stories = []; cid = 1; sid = 1;
+  (data.clips || []).forEach(c => { c.id = cid++; S.clips.push(c); });
+  (data.stories || []).forEach(s => { s.id = sid++; S.stories.push(s); });
+  if (data.cfg) Object.assign(S.cfg, data.cfg);
+}
+
+function restoreState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) applyState(JSON.parse(raw));
+  } catch (e) {}
+}
+
+function nav(view) {
+  document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + view).classList.remove('hidden');
+  document.querySelector('[data-view="' + view + '"]').classList.add('active');
+  if (view === 'dashboard') renderDash();
+  if (view === 'clips') renderClips();
+  if (view === 'stories') renderStories();
+  if (view === 'report') openReport();
+}
+
+function renderDash() {
+  document.getElementById('st-clips').textContent = S.clips.length;
+  document.getElementById('st-stories').textContent = S.stories.length;
+  document.getElementById('st-high').textContent = S.stories.filter(s => s.trInt === 'very_high' || s.trInt === 'high').length;
+  document.getElementById('st-rpt').textContent = S.cfg.num || '–';
+  document.getElementById('st-rpt-sub').textContent = S.cfg.date || 'Set in Report settings';
+  document.getElementById('dash-sub').textContent = S.cfg.date ? `${S.cfg.num} · ${S.cfg.date}` : "Today's media monitoring overview";
+
+  const cats = {};
+  S.stories.forEach(s => { cats[s.cat] = (cats[s.cat] || 0) + 1; });
+  document.getElementById('dash-cats').innerHTML = Object.keys(cats).length
+    ? Object.entries(cats).map(([cat, n]) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><span class="tag ${CAT_TAG[cat] || ''}">${CATS[cat] || cat}</span><strong>${n}</strong></div>`).join('')
+    : '<div style="color:var(--muted);font-size:12px">No stories yet</div>';
+
+  const recent = [...S.clips].slice(-5).reverse();
+  document.getElementById('dash-recent').innerHTML = recent.length
+    ? recent.map(c => `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><div style="width:36px;height:28px;background:var(--bg);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center">📰</div><div style="min-width:0"><div style="font-weight:700">${c.pub}</div><div style="color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${c.subject || '–'}</div></div></div>`).join('')
+    : '<div style="color:var(--muted);font-size:12px">No clips yet</div>';
+
+  badges();
+}
+
+function renderClips() {
+  const data = S.clipFilter === 'all' ? S.clips : S.clips.filter(c => c.cat === S.clipFilter);
+  document.getElementById('clips-sub').textContent = `${data.length} clip${data.length !== 1 ? 's' : ''}`;
+  const list = document.getElementById('clips-list'), empty = document.getElementById('clips-empty');
+  if (!data.length) { list.innerHTML = ''; empty.classList.remove('hidden'); badges(); return; }
+  empty.classList.add('hidden');
+
+  list.innerHTML = data.map(c => `
+    <div class="clip-card">
+      <div class="clip-thumb" onclick="alert('Preview coming soon')"><div style="font-size:22px">📰</div></div>
+      <div class="clip-body">
+        <div class="clip-pub"><strong>${c.pub}</strong> ${c.plat ? `<span class="platform-pill">${c.plat}</span>` : ''}</div>
+        <div class="clip-subject">${c.subject || '–'}</div>
+        <div class="clip-footer"><span class="tag ${CAT_TAG[c.cat] || ''}">${CATS[c.cat] || c.cat}</span></div>
+      </div>
+      <div class="clip-actions">
+        <button class="btn btn-ghost btn-sm" onclick="editClip(${c.id})">Edit</button>
+        <button class="btn btn-ghost btn-sm btn-danger" onclick="delClip(${c.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+  badges();
+}
+
+function setClipFilter(v, btn) {
+  S.clipFilter = v;
+  document.querySelectorAll('#clips-filters .flt-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderClips();
+}
+
+function delClip(id) {
+  if (!confirm('Delete this clip?')) return;
+  S.clips = S.clips.filter(c => c.id !== id);
+  persist();
+  renderClips();
+}
+
+function openClipModal(id) {
+  S.editClipId = id || null;
+  const c = id ? S.clips.find(x => x.id === id) : null;
+  document.getElementById('clip-modal-title').textContent = id ? 'Edit Clip' : 'Add News Clip';
+  document.getElementById('cm-date').value = c ? c.date : localDate();
+  document.getElementById('cm-cat').value = c ? c.cat : 'daily_news';
+  document.getElementById('cm-pub').value = c ? c.pub : '';
+  document.getElementById('cm-plat').value = c ? c.plat : '';
+  document.getElementById('cm-subject').value = c ? c.subject : '';
+  document.getElementById('cm-link').value = c ? c.link : '';
+  document.getElementById('clip-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('cm-pub').focus(), 100);
+}
+
+function saveClip() {
+  const pub = document.getElementById('cm-pub').value.trim();
+  if (!pub) { alert('Publication name is required.'); return; }
+  const c = { date: document.getElementById('cm-date').value, cat: document.getElementById('cm-cat').value, pub, plat: document.getElementById('cm-plat').value, subject: document.getElementById('cm-subject').value.trim(), link: document.getElementById('cm-link').value.trim() };
+  if (S.editClipId) {
+    const i = S.clips.findIndex(x => x.id === S.editClipId);
+    if (i !== -1) S.clips[i] = { ...c, id: S.editClipId };
+  } else {
+    c.id = cid++;
+    S.clips.push(c);
+  }
+  closeModal('clip-modal');
+  persist();
+  renderClips();
+  badges();
+}
+
+function editClip(id) {
+  openClipModal(id);
+}
+
+function openStoryModal(id) {
+  S.editStoryId = id || null;
+  const s = id ? S.stories.find(x => x.id === id) : null;
+  document.getElementById('story-modal-title').textContent = id ? 'Edit Story' : 'Add Story';
+  document.getElementById('sm-cat').value = s ? s.cat : 'daily_news';
+  document.getElementById('sm-hl').value = s ? s.hl : '';
+  document.getElementById('sm-summary').value = s ? s.summary : '';
+  document.getElementById('sm-reported').value = s ? s.reported : '';
+  document.getElementById('sm-syndicated').value = s ? s.syndicated : '';
+  document.getElementById('sm-published').value = s ? s.published : '';
+  document.getElementById('sm-tr-int').value = s ? (s.trInt || '') : '';
+  document.getElementById('sm-tr-com').value = s ? (s.trCom || '') : '';
+  document.getElementById('sm-tr-note').value = s ? s.trNote : '';
+  document.getElementById('story-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('sm-hl').focus(), 100);
+}
+
+function saveStory() {
+  const hl = document.getElementById('sm-hl').value.trim();
+  if (!hl) { alert('Headline is required.'); return; }
+  const s = { cat: document.getElementById('sm-cat').value, hl, summary: document.getElementById('sm-summary').value.trim(), reported: document.getElementById('sm-reported').value.trim(), syndicated: document.getElementById('sm-syndicated').value.trim(), published: document.getElementById('sm-published').value.trim(), trInt: document.getElementById('sm-tr-int').value, trCom: document.getElementById('sm-tr-com').value, trNote: document.getElementById('sm-tr-note').value.trim() };
+  if (S.editStoryId) {
+    const i = S.stories.findIndex(x => x.id === S.editStoryId);
+    if (i !== -1) S.stories[i] = { ...s, id: S.editStoryId };
+  } else {
+    s.id = sid++;
+    S.stories.push(s);
+  }
+  closeModal('story-modal');
+  persist();
+  renderStories();
+  badges();
+}
+
+function editStory(id) {
+  openStoryModal(id);
+}
+
+function renderStories() {
+  const data = S.storyFilter === 'all' ? S.stories : S.stories.filter(s => s.cat === S.storyFilter);
+  document.getElementById('stories-sub').textContent = `${data.length} stor${data.length !== 1 ? 'ies' : 'y'}`;
+  const list = document.getElementById('story-list'), empty = document.getElementById('stories-empty');
+  if (!data.length) { list.innerHTML = ''; empty.classList.remove('hidden'); badges(); return; }
+  empty.classList.add('hidden');
+
+  let html = '';
+  data.forEach((s, i) => {
+    html += `<div class="card" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px"><div><strong>${s.hl}</strong><div style="margin-top:6px"><span class="tag ${CAT_TAG[s.cat] || ''}">${CATS[s.cat] || s.cat}</span></div></div><div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" onclick="editStory(${s.id})">Edit</button><button class="btn btn-ghost btn-sm btn-danger" onclick="delStory(${s.id})">Delete</button></div></div><div style="font-size:13px;line-height:1.6;color:var(--text);margin-bottom:12px">${s.summary || '<em style="color:var(--muted)">No summary yet</em>'}</div>${s.reported || s.syndicated || s.published ? `<div style="font-size:11px;color:var(--muted)">` + (s.reported ? `<div>Reported by: ${s.reported}</div>` : '') + (s.syndicated ? `<div>Syndicated by: ${s.syndicated}</div>` : '') + (s.published ? `<div>Published on: ${s.published}</div>` : '') + `</div>` : ''}</div>`;
+  });
+  list.innerHTML = html;
+  badges();
+}
+
+function setStoryFilter(v, btn) {
+  S.storyFilter = v;
+  document.querySelectorAll('#stories-filters .flt-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderStories();
+}
+
+function delStory(id) {
+  if (!confirm('Delete?')) return;
+  S.stories = S.stories.filter(s => s.id !== id);
+  persist();
+  renderStories();
+  badges();
+}
+
+function openReport() {
+  document.getElementById('cfg-num').value = S.cfg.num;
+  document.getElementById('cfg-date').value = S.cfg.date;
+  document.getElementById('cfg-highlights').value = S.cfg.highlights;
+  document.getElementById('cfg-issues').value = S.cfg.issues;
+  document.getElementById('cfg-fyi').value = S.cfg.fyi;
+  refreshReport();
+}
+
+const TRACTION_LABEL = { very_high: 'very high', high: 'high', moderate: 'moderate', low: 'low', very_low: 'very low' };
+
+function tractionLine(s) {
+  const parts = [];
+  if (s.trInt || s.trCom) {
+    if (s.trInt && s.trCom) {
+      parts.push(`To date, traction is ${TRACTION_LABEL[s.trInt]} for interactions and ${TRACTION_LABEL[s.trCom]} for comments across all platforms.`);
+    } else {
+      parts.push(`To date, traction is ${TRACTION_LABEL[s.trInt || s.trCom]} for ${s.trInt ? 'interactions' : 'comments'}.`);
+    }
+  }
+  if (s.trNote) parts.push(s.trNote);
+  return parts.join(' ');
+}
+
+function storyBlock(s, i) {
+  let meta = '';
+  if (s.reported) {
+    meta += `<li><strong>Reported by:</strong> ${s.reported}`;
+    if (s.syndicated) meta += `<ul style="margin:2px 0 0 16px;list-style:circle"><li><strong>Syndicated by:</strong> ${s.syndicated}</li></ul>`;
+    meta += `</li>`;
+  } else if (s.syndicated) {
+    meta += `<li><strong>Syndicated by:</strong> ${s.syndicated}</li>`;
+  }
+  if (s.published) meta += `<li><strong>Published on:</strong> ${s.published}</li>`;
+  const tr = tractionLine(s);
+  if (tr) meta += `<li>${tr}</li>`;
+  return `<div style="margin-bottom:16px"><div style="font-weight:700;margin-bottom:5px">${i + 1}. ${s.hl}</div><div style="font-size:12px;margin-bottom:7px">${s.summary || ''}</div>${meta ? `<ul style="font-size:11.5px;margin:0 0 0 18px;padding:0">${meta}</ul>` : ''}</div>`;
+}
+
+function sectionHeader(title) {
+  return `<div style="font-size:11.5px;font-weight:900;text-transform:uppercase;color:#fff;background:var(--navy);padding:5px 10px;margin-bottom:12px">${title}</div>`;
+}
+
+function refreshReport() {
+  S.cfg.num = document.getElementById('cfg-num').value.trim();
+  S.cfg.date = document.getElementById('cfg-date').value.trim();
+  S.cfg.highlights = document.getElementById('cfg-highlights').value;
+  S.cfg.issues = document.getElementById('cfg-issues').value;
+  S.cfg.fyi = document.getElementById('cfg-fyi').value;
+  persist();
+
+  let html = `<div style="border-bottom:3px solid var(--navy);padding-bottom:14px;margin-bottom:22px"><div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:3px;text-align:right">${S.cfg.num || '___/2026'}</div><div style="font-size:16px;font-weight:900;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;text-align:center">Media Monitoring Report –<br>${S.cfg.date || '[Date]'}</div></div>`;
+
+  // Section order follows the SPS MM Summaries report format:
+  // Highlights → Issues Monitoring → Daily News → Yellow Ribbon →
+  // CARE Network → Social Media Updates → FYI News
+  html += `<div style="margin-bottom:26px">${sectionHeader('News Highlights')}<pre style="font-family:inherit;white-space:pre-wrap;font-size:12px">${S.cfg.highlights || '1. XXX'}</pre></div>`;
+
+  const issueStories = S.stories.filter(s => s.cat === 'issues');
+  html += `<div style="margin-bottom:26px"><div style="font-size:12px;font-weight:900;color:var(--red);margin-bottom:10px">Issues Monitoring</div>`;
+  if (issueStories.length) issueStories.forEach((s, i) => { html += storyBlock(s, i); });
+  else html += `<pre style="font-family:inherit;white-space:pre-wrap;font-size:12px">${S.cfg.issues || '1. XXX'}</pre>`;
+  html += `</div>`;
+
+  const categories = ['daily_news', 'yellow_ribbon', 'care_network', 'social_updates'];
+  categories.forEach(cat => {
+    const stories = S.stories.filter(s => s.cat === cat);
+    if (!stories.length) return;
+    html += `<div style="margin-bottom:26px">${sectionHeader(CATS[cat])}`;
+    if (cat === 'social_updates') html += `<div style="font-style:italic;font-size:12px;margin-bottom:8px">Singapore Prison Service</div>`;
+    stories.forEach((s, i) => { html += storyBlock(s, i); });
+    html += `</div>`;
+  });
+
+  const fyiStories = S.stories.filter(s => s.cat === 'fyi');
+  html += `<div style="margin-bottom:26px">${sectionHeader('FYI News')}`;
+  if (fyiStories.length) fyiStories.forEach((s, i) => { html += storyBlock(s, i); });
+  else html += `<pre style="font-family:inherit;white-space:pre-wrap;font-size:12px">${S.cfg.fyi || '1. XXX'}</pre>`;
+  html += `</div>`;
+
+  document.getElementById('report-preview').innerHTML = html;
+}
+
+function printReport() {
+  refreshReport();
+  const content = document.getElementById('report-preview').innerHTML;
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SPS Report</title><style>*{margin:0;padding:0}body{font-family:system-ui;color:#1c2b3a;font-size:11.5pt;line-height:1.7;padding:36px 46px}</style></head><body>${content}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 600);
+}
+
+function storyText(s, i) {
+  let t = `${i + 1}. ${s.hl}\n${s.summary || ''}\n`;
+  if (s.reported) t += `• Reported by: ${s.reported}\n`;
+  if (s.syndicated) t += `   o Syndicated by: ${s.syndicated}\n`;
+  if (s.published) t += `• Published on: ${s.published}\n`;
+  const tr = tractionLine(s);
+  if (tr) t += `• ${tr}\n`;
+  return t + '\n';
+}
+
+function copyReport() {
+  refreshReport();
+  let t = `${S.cfg.num}\n\nMEDIA MONITORING REPORT –\n${S.cfg.date}\n\nNews Highlights\n\n${S.cfg.highlights || '1. XXX'}\n\nIssues Monitoring\n\n`;
+  const issueStories = S.stories.filter(s => s.cat === 'issues');
+  if (issueStories.length) issueStories.forEach((s, i) => { t += storyText(s, i); });
+  else t += `${S.cfg.issues || '1. XXX'}\n\n`;
+  ['daily_news', 'yellow_ribbon', 'care_network', 'social_updates'].forEach(cat => {
+    const stories = S.stories.filter(s => s.cat === cat);
+    if (!stories.length) return;
+    t += `${CATS[cat]}\n\n`;
+    if (cat === 'social_updates') t += `Singapore Prison Service\n\n`;
+    stories.forEach((s, i) => { t += storyText(s, i); });
+  });
+  t += `FYI News\n\n`;
+  const fyiStories = S.stories.filter(s => s.cat === 'fyi');
+  if (fyiStories.length) fyiStories.forEach((s, i) => { t += storyText(s, i); });
+  else t += `${S.cfg.fyi || '1. XXX'}`;
+  navigator.clipboard.writeText(t).then(() => alert('Report copied!'));
+}
+
+// ── Clips log export (matches the "(TMG) SPS News Clips" PDF format) ──
+function printClipsLog() {
+  if (!S.clips.length) { alert('No clips to print yet.'); return; }
+  const fmtDate = d => {
+    if (!d) return '–';
+    const dt = new Date(d + 'T00:00:00');
+    return isNaN(dt) ? d : dt.toLocaleDateString('en-SG', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+  const blocks = [...S.clips].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(c => `
+    <div class="clip-page">
+      <table>
+        <tr><td class="lbl">Date:</td><td>${fmtDate(c.date)}</td></tr>
+        <tr><td class="lbl">Publication:</td><td>${c.pub}${c.plat ? ' (' + c.plat + ')' : ''}</td></tr>
+        <tr><td class="lbl">Subject:</td><td>${c.subject || '–'}</td></tr>
+        <tr><td class="lbl">Link:</td><td>${c.link ? `<a href="${c.link}">${c.link}</a>` : '–'}</td></tr>
+      </table>
+      <div class="rule"></div>
+      <div class="shot-note">[ Attach screenshot of post here ]</div>
+    </div>`).join('');
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SPS News Clips</title><style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:system-ui,-apple-system,sans-serif; font-size:11pt; color:#1c2b3a; padding:30px 40px; line-height:1.55; }
+    .clip-page { page-break-after:always; padding-top:10px; }
+    table { border-collapse:collapse; width:100%; }
+    td { vertical-align:top; padding:2px 0; }
+    td.lbl { font-weight:700; width:110px; }
+    a { color:#2471a3; word-break:break-all; }
+    .rule { border-bottom:3px solid #1c2b3a; margin:10px 0 14px; }
+    .shot-note { color:#9aa7b4; font-size:10pt; font-style:italic; }
+  </style></head><body>${blocks}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 600);
+}
+
+// ── Session loading ─────────────────────────────────────────
+async function loadYesterdayData() {
+  try {
+    const days = await (await fetch('/api/days')).json();
+    const today = localDate();
+    const prev = days.find(d => d < today);
+    if (!prev) { alert('No earlier saved day found yet. Days are saved automatically as you work.'); return; }
+    const data = await (await fetch('/api/day/' + prev + '.json')).json();
+    if (!confirm(`Load ${prev} (${(data.clips || []).length} clips, ${(data.stories || []).length} stories)? This replaces the current session.`)) return;
+    applyState(data);
+    persist();
+    nav('dashboard');
+  } catch (e) {
+    alert('Day history needs the local server (double-click "Launch SPS Monitor.command"). You can also use Load Session to import a JSON file.');
+  }
+}
+
+async function loadExampleDay() {
+  try {
+    const data = await (await fetch('sps-clips-data.json')).json();
+    if (!confirm(`Load example day (${(data.clips || []).length} clips)? This replaces the current session.`)) return;
+    applyState(data);
+    persist();
+    nav('dashboard');
+  } catch (e) {
+    alert('Could not load sps-clips-data.json — open the tool via the launcher or Netlify, not as a file://');
+  }
+}
+
+function exportState() {
+  const data = { version: 1, date: new Date().toISOString().slice(0, 10), clips: S.clips, stories: S.stories, cfg: S.cfg };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  a.download = `sps-monitor-${data.date}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function importState() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!confirm(`Load ${data.clips?.length || 0} clips and ${data.stories?.length || 0} stories?`)) return;
+      S.clips = [];
+      S.stories = [];
+      cid = 1;
+      sid = 1;
+      data.clips?.forEach(c => { c.id = cid++; S.clips.push(c); });
+      data.stories?.forEach(s => { s.id = sid++; S.stories.push(s); });
+      if (data.cfg) Object.assign(S.cfg, data.cfg);
+      persist();
+      renderDash();
+      badges();
+      nav('dashboard');
+    } catch (e) {
+      alert('Could not load file.');
+    }
+  };
+  input.click();
+}
+
+function badges() {
+  document.getElementById('badge-clips').textContent = S.clips.length;
+  document.getElementById('badge-stories').textContent = S.stories.length;
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.add('hidden');
+}
+
+document.querySelectorAll('.overlay').forEach(el => {
+  el.addEventListener('click', e => {
+    if (e.target === el) el.classList.add('hidden');
+  });
+});
+
+function init() {
+  restoreState();
+  const today = new Date();
+  document.getElementById('sb-today').textContent = today.toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  document.getElementById('sb-rptnum').textContent = `Report ${S.cfg.num}`;
+  renderDash();
+  badges();
+}
+
+init();
+</script>
+
+</body>
+</html>

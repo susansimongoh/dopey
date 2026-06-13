@@ -1,0 +1,273 @@
+{
+  "tier": "1",
+  "description": "High-priority monitoring: major news outlets, government, high-risk activists",
+  "refreshInterval": "daily",
+  "sources": {
+    "news_outlets": {
+      "description": "Major SG news outlets",
+      "actor": "facebook-comments-reactions",
+      "accounts": [
+        {
+          "name": "Straits Times",
+          "handle": "straitstimes",
+          "platforms": ["Facebook", "X/Twitter"],
+          "facebook_page_id": "15853217671",
+          "keywords": ["Singapore Prison", "Changi Prison", "SPS", "death penalty"]
+        },
+        {
+          "name": "CNA",
+          "handle": "channelnewsasia",
+          "platforms": ["Facebook", "YouTube"],
+          "facebook_page_id": "105487206148",
+          "keywords": ["Singapore Prison", "Changi Prison", "SPS"]
+        },
+        {
+          "name": "Mothership.SG",
+          "handle": "mothershipsg",
+          "platforms": ["Facebook"],
+          "facebook_page_id": "195253070560558",
+          "keywords": ["Singapore Prison", "Changi"]
+        },
+        {
+          "name": "Rice Media",
+          "handle": "ricemediacorp",
+          "platforms": ["Facebook", "X/Twitter"],
+          "facebook_page_id": "923457654389759",
+          "keywords": ["Singapore Prison", "SPS"]
+        },
+        {
+          "name": "AsiaOne",
+          "handle": "asiaone",
+          "platforms": ["Facebook"],
+          "facebook_page_id": "170380919689",
+          "keywords": ["Singapore Prison", "Changi"]
+        },
+        {
+          "name": "TODAY Online",
+          "handle": "todayonline",
+          "platforms": ["Facebook"],
+          "facebook_page_id": "175874872434397",
+          "keywords": ["Singapore Prison"]
+        }
+      ]
+    },
+    "government_accounts": {
+      "description": "Government ministries and agencies",
+      "accounts": [
+        {
+          "name": "Ministry of Home Affairs",
+          "handle": "mhasingapore",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok", "YouTube"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": "105298922767451",
+          "ig_username": "mhasingapore",
+          "twitter_handle": "MHAsg",
+          "tiktok_handle": "@mhasingapore",
+          "youtube_channel": "Ministry of Home Affairs Singapore"
+        },
+        {
+          "name": "Central Narcotics Bureau",
+          "handle": "cnbsingapore",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": "108876772431889",
+          "ig_username": "cnbsingapore",
+          "twitter_handle": "CNB_Singapore",
+          "tiktok_handle": "@cnbsg"
+        }
+      ]
+    },
+    "high_priority_activists": {
+      "description": "High-risk activist accounts (yellow highlighted in MM Search Guide)",
+      "accounts": [
+        {
+          "name": "Anti-Drug Penalty Asia Network (ADPAN)",
+          "handle": "adpan_asia",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": null,
+          "ig_username": "adpan_asia",
+          "twitter_handle": "adpan_asia",
+          "tiktok_handle": "@adpan_asia",
+          "risk_level": "very_high"
+        },
+        {
+          "name": "Alliance Against Death Penalty (AADP)",
+          "handle": "aadpsingapore",
+          "platforms": ["Instagram"],
+          "actor": "instagram-scraper",
+          "ig_username": "aadpsingapore",
+          "risk_level": "very_high"
+        },
+        {
+          "name": "The Online Citizen",
+          "handle": "theonlinecitizen",
+          "platforms": ["Facebook", "Instagram", "TikTok", "YouTube"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": "115256661857814",
+          "ig_username": "theonlinecitizen",
+          "tiktok_handle": "@theonlinecitizen",
+          "youtube_channel": "The Online Citizen",
+          "risk_level": "very_high"
+        },
+        {
+          "name": "Human Rights Watch",
+          "handle": "hrw",
+          "platforms": ["Facebook", "Instagram", "TikTok", "YouTube"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": "18133431068",
+          "ig_username": "humanrightswatch",
+          "tiktok_handle": "@hrw",
+          "youtube_channel": "Human Rights Watch",
+          "risk_level": "high"
+        },
+        {
+          "name": "M Ravi",
+          "handle": "mravi_sg",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": null,
+          "ig_username": "mravi_sg",
+          "twitter_handle": "mravi_sg",
+          "tiktok_handle": "@mravi_sg",
+          "risk_level": "very_high",
+          "note": "Lawyer, prominent activist"
+        },
+        {
+          "name": "Kirsten Han",
+          "handle": "kirstenhan",
+          "platforms": ["Facebook", "Instagram", "X/Twitter"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": null,
+          "ig_username": "kirstenhan",
+          "twitter_handle": "kirstenhan",
+          "risk_level": "very_high"
+        },
+        {
+          "name": "Jolovan Wham",
+          "handle": "jolo_wham",
+          "platforms": ["Facebook", "Instagram", "TikTok"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": null,
+          "ig_username": "jolo_wham",
+          "tiktok_handle": "@jolo_wham",
+          "risk_level": "very_high",
+          "note": "Activist for migrant workers, human rights"
+        },
+        {
+          "name": "PJ Thum",
+          "handle": "pjthum",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": null,
+          "ig_username": "pjthum",
+          "twitter_handle": "pjthum",
+          "tiktok_handle": "@pjthum",
+          "risk_level": "very_high"
+        },
+        {
+          "name": "Andrew Loh",
+          "handle": "yawningbread",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": null,
+          "ig_username": "yawningbread",
+          "twitter_handle": "yawningbread",
+          "tiktok_handle": "@yawningbread",
+          "risk_level": "very_high"
+        },
+        {
+          "name": "Elijah Tay",
+          "handle": "elijahtaysk",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": null,
+          "ig_username": "elijahtaysk",
+          "twitter_handle": "elijahtaysk",
+          "tiktok_handle": "@elijahtaysk",
+          "risk_level": "high"
+        },
+        {
+          "name": "Transformative Justice Collective",
+          "handle": "tjcsingapore",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": null,
+          "ig_username": "tjcsingapore",
+          "twitter_handle": "tjcsingapore",
+          "tiktok_handle": "@tjcsingapore",
+          "risk_level": "very_high",
+          "note": "Ceases operation till Dec 2026"
+        },
+        {
+          "name": "Wake Up Singapore",
+          "handle": "wakeupsingapore",
+          "platforms": ["Facebook", "Instagram", "YouTube"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": null,
+          "ig_username": "wakeupsingapore",
+          "youtube_channel": "Wake Up Singapore",
+          "risk_level": "high"
+        },
+        {
+          "name": "New Naratif",
+          "handle": "newnaratif",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok", "YouTube"],
+          "actor": "facebook-comments-reactions",
+          "facebook_page_id": null,
+          "ig_username": "newnaratif",
+          "twitter_handle": "newnaratif",
+          "tiktok_handle": "@newnaratif",
+          "youtube_channel": "New Naratif",
+          "risk_level": "high"
+        }
+      ]
+    },
+    "government_officials": {
+      "description": "Key government officials - monitor for statements/posts about SPS, prisons, death penalty",
+      "accounts": [
+        {
+          "name": "Assoc Prof Muhammad Faishal Ibrahim",
+          "handle": "mfaisalibrahim",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok"],
+          "role": "Senior Minister of State (Home Affairs, Muslim Affairs)"
+        },
+        {
+          "name": "Mr Edwin Tong",
+          "handle": "edwintongsm",
+          "platforms": ["Facebook", "Instagram", "TikTok"],
+          "role": "Minister for Culture, Community and Youth",
+          "note": "X/Twitter inactive"
+        },
+        {
+          "name": "Ms Sim Ann",
+          "handle": "simann_mp",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok"],
+          "role": "Senior Minister of State (Education, Transport)"
+        },
+        {
+          "name": "Mr Goh Pei Ming",
+          "handle": "gohpeim",
+          "platforms": ["Facebook", "Instagram", "X/Twitter", "TikTok"],
+          "role": "Member of Parliament"
+        }
+      ]
+    }
+  },
+  "actor_mapping": {
+    "facebook-comments-reactions": "https://apify.com/apify/facebook-comments-reactions",
+    "instagram-scraper": "https://apify.com/bnkysz/instagram-scraper",
+    "tiktok-video-scraper": "https://apify.com/clockworks/tiktok-video-scraper",
+    "youtube-scraper": "https://apify.com/apify/youtube-scraper",
+    "twitter-scraper": "https://apify.com/apify/twitter-scraper"
+  },
+  "notes": {
+    "login_walls": [
+      "Facebook: Requires public page access - will fetch from page posts",
+      "Instagram: Public accounts viewable - use instagram-scraper for profiles",
+      "Private accounts: Will show 'Account Private' and skip detailed metrics"
+    ],
+    "engagement_tracking": "Collect likes, comments, shares, views (for video) for traction calculation",
+    "keywords": "Filter posts by keywords: 'Singapore Prison', 'Changi Prison', 'SPS', 'death penalty', 'Yellow Ribbon', 'Inside Maximum security'"
+  }
+}

@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPS Media Monitor — Intel Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --paper: #f5f5f7;
+  --paper-2: #e9e9ee;
+  --card: #ffffff;
+  --ink: #1d1d1f;
+  --ink-2: #48484e;
+  --muted: #86868b;
+  --line: rgba(0,0,0,.06);
+  --line-2: rgba(0,0,0,.12);
+  --verm: #cf3a1d;
+  --verm-deep: #a82d12;
+  --verm-soft: #fbe9e3;
+  --gold: #a87d18;
+  --gold-soft: #f7efd7;
+  --teal: #0e7460;
+  --teal-soft: #def2ec;
+  --navy-soft: #e8eef7;
+  --rail: #eeeef2;
+  --rail-2: rgba(0,0,0,.045);
+  --rail-line: rgba(0,0,0,.07);
+  --serif: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  --sans: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  --mono: 'Spline Sans Mono', ui-monospace, monospace;
+  --ease: cubic-bezier(.32,.72,0,1);
+  --shadow-soft: 0 1px 1px rgba(0,0,0,.02), 0 10px 30px -12px rgba(0,0,0,.08);
+  --shadow-lift: 0 2px 4px rgba(0,0,0,.03), 0 20px 48px -16px rgba(0,0,0,.13);
+  --bezel: 0 0 0 1px rgba(0,0,0,.05), 0 0 0 7px rgba(0,0,0,.015), 0 0 0 8px rgba(0,0,0,.03), 0 20px 44px -20px rgba(0,0,0,.1);
+}
+
+html { height: 100%; }
+body {
+  font-family: var(--sans);
+  background: linear-gradient(180deg, #fbfbfd 0%, var(--paper) 220px);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.6;
+  height: 100%;
+  display: flex;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -.01em;
+}
+
+::selection { background: var(--verm); color: #fff; }
+a { color: var(--ink); }
+button { font-family: inherit; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+
+/* ═══ DAY LEDGER (left rail — light sidebar) ═══ */
+.rail {
+  width: 240px; flex-shrink: 0; color: var(--ink);
+  background: linear-gradient(180deg, #f2f2f6 0%, var(--rail) 50%);
+  display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; z-index: 5;
+}
+.rail::after { content:''; position:absolute; top:0; right:0; bottom:0; width:1px;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.08) 25%, rgba(0,0,0,.08) 75%, transparent); }
+.rail-brand { padding: 28px 22px 20px; }
+.rail-brand .agency { font-family: var(--mono); font-size: 8.5px; letter-spacing: 2.6px; text-transform: uppercase; color: var(--muted); }
+.rail-brand h1 { font-weight: 800; font-size: 23px; letter-spacing: -.6px; line-height: 1.12; margin-top: 6px; }
+.rail-brand h1 em { font-style: normal; color: var(--verm); }
+.rail-brand .client {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: 1.8px; color: var(--verm);
+  background: var(--verm-soft); padding: 4.5px 12px; border-radius: 99px; font-weight: 600;
+}
+.rail-brand .client::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--verm); }
+
+.ledger-head {
+  padding: 14px 24px 10px; font-family: var(--mono); font-size: 8.5px;
+  letter-spacing: 2.6px; text-transform: uppercase; color: var(--muted);
+  display: flex; justify-content: space-between; align-items: baseline;
+  border-top: 1px solid var(--rail-line);
+}
+.ledger { flex: 1; overflow-y: auto; padding: 2px 12px 16px; }
+
+.day-row {
+  width: 100%; text-align: left; background: none; border: none; color: inherit; cursor: pointer;
+  padding: 11px 13px; border-radius: 14px; margin-bottom: 2px;
+  display: block; transition: background .4s var(--ease), box-shadow .4s var(--ease), transform .4s var(--ease);
+}
+.day-row:hover { background: var(--rail-2); }
+.day-row.active {
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 22px -10px rgba(0,0,0,.14), inset 3px 0 0 var(--verm);
+}
+.day-row .d-date { font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .6px; }
+.day-row .d-label { font-size: 11px; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 6px; font-weight: 500; }
+.day-row .d-counts { font-family: var(--mono); font-size: 9.5px; color: #a1a1a6; margin-top: 5px; display: flex; gap: 11px; }
+.day-row .d-counts b { color: var(--ink); font-weight: 600; }
+.dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.dot.fetched { background: #2fb573; box-shadow: 0 0 6px rgba(47,181,115,.55); }
+.dot.pending { background: #d9a514; box-shadow: 0 0 6px rgba(217,165,20,.55); }
+.day-row .pill-new {
+  font-family: var(--mono); font-size: 9px; background: var(--verm); color: #fff;
+  padding: 1.5px 8px; border-radius: 99px; font-weight: 600;
+}
+
+.rail-foot { padding: 14px 16px 18px; border-top: 1px solid var(--rail-line); display: flex; flex-direction: column; gap: 4px; }
+.rail-btn {
+  background: none; border: none; border-radius: 11px; color: var(--ink-2); cursor: pointer;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 1.2px; text-transform: uppercase;
+  padding: 8px 12px; text-align: left; transition: all .35s var(--ease); font-weight: 500;
+}
+.rail-btn:hover { color: var(--ink); background: var(--rail-2); }
+
+/* ═══ MAIN ═══ */
+.main { flex: 1; min-width: 0; position: relative; z-index: 1; display: flex; flex-direction: column; }
+
+.masthead { padding: 40px 48px 0; }
+.masthead-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+.mast-kicker {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; letter-spacing: -.01em; color: var(--verm); font-weight: 600;
+}
+.mast-kicker::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--verm); animation: pulse 2.4s var(--ease) infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .3; transform: scale(.85); } }
+.mast-title { font-weight: 800; font-size: clamp(32px, 4vw, 48px); letter-spacing: -.03em; line-height: 1.02; margin: 8px 0 6px; }
+.mast-meta { font-size: 12.5px; color: var(--muted); display: flex; gap: 18px; flex-wrap: wrap; padding-bottom: 5px; font-weight: 500; }
+.mast-meta .ok { color: var(--teal); }
+.mast-actions { display: flex; gap: 8px; align-items: center; padding-bottom: 8px; flex-wrap: wrap; }
+
+.btn {
+  border: none; background: rgba(0,0,0,.05); color: var(--ink);
+  font-size: 13px; font-weight: 600; padding: 9px 17px; cursor: pointer; border-radius: 99px;
+  transition: transform .4s var(--ease), box-shadow .4s var(--ease), background .25s var(--ease);
+  letter-spacing: -.01em;
+}
+.btn:hover { background: rgba(0,0,0,.08); }
+.btn:active { transform: scale(.96); }
+.btn-ink { background: var(--ink); color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+.btn-ink:hover { background: #000; }
+.btn-verm { background: var(--verm); color: #fff; box-shadow: 0 1px 2px rgba(168,45,18,.3); }
+.btn-verm:hover { background: var(--verm-deep); }
+.btn-sm { padding: 5px 13px; font-size: 12px; }
+.btn-ghost { background: transparent; }
+.btn-ghost:hover { background: rgba(0,0,0,.05); }
+.btn:disabled { opacity: .4; cursor: default; transform: none !important; }
+
+/* floating segmented tab bar */
+.tabs {
+  display: inline-flex; gap: 2px; margin: 26px 0 -18px; position: relative; z-index: 2;
+  background: rgba(0,0,0,.045); border-radius: 12px; padding: 3px;
+}
+.tab {
+  background: none; border: none; cursor: pointer; border-radius: 9px;
+  font-size: 12.5px; letter-spacing: -.01em; font-weight: 600;
+  color: var(--ink-2); padding: 7px 16px;
+  transition: color .35s var(--ease), background .35s var(--ease), box-shadow .35s var(--ease);
+  display: flex; gap: 8px; align-items: center;
+}
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--ink); background: #fff; box-shadow: 0 1px 1px rgba(0,0,0,.04), 0 3px 8px -3px rgba(0,0,0,.16); }
+.tab .badge {
+  font-size: 10px; background: rgba(0,0,0,.08); color: var(--ink-2); border-radius: 99px;
+  padding: 1px 7px; font-weight: 600; min-width: 20px; text-align: center;
+  transition: background .35s var(--ease), color .35s var(--ease);
+}
+.tab.active .badge { background: var(--verm); color: #fff; }
+
+.content { padding: 40px 48px 88px; flex: 1; max-width: 1120px; width: 100%; }
+
+/* archive ribbon */
+.ribbon {
+  margin-bottom: 22px; padding: 11px 18px; font-size: 12.5px; border-radius: 16px;
+  border: 1px dashed rgba(168,128,31,.5); background: var(--gold-soft); color: #6b5413;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.ribbon b { font-family: var(--mono); letter-spacing: .5px; }
+
+/* fetch banner — double-bezel */
+.fetchline {
+  margin-bottom: 22px; padding: 13px 18px; border-radius: 18px;
+  background: var(--card); display: flex; align-items: center; gap: 12px; font-size: 13px;
+  box-shadow: var(--bezel);
+  animation: rise .7s var(--ease) both;
+}
+.spinner {
+  width: 14px; height: 14px; border: 2.5px solid var(--line-2); border-top-color: var(--verm);
+  border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ═══ INBOX ═══ */
+.toolbar { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+.chip {
+  border: 1px solid var(--line); background: var(--card); cursor: pointer;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  padding: 6px 14px; color: var(--muted); border-radius: 99px; font-weight: 600;
+  transition: all .4s var(--ease); box-shadow: 0 1px 2px rgba(20,24,33,.03);
+}
+.chip:hover { color: var(--ink); border-color: var(--line-2); transform: translateY(-1px); }
+.chip.active { background: var(--ink); border-color: var(--ink); color: var(--paper); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 6px 16px -6px rgba(20,24,33,.35); }
+.toolbar .spacer { flex: 1; }
+.search {
+  border: 1px solid var(--line); background: var(--card); font-family: var(--mono);
+  font-size: 12px; padding: 7px 16px; width: 210px; color: var(--ink); border-radius: 99px;
+  transition: border-color .4s var(--ease), box-shadow .4s var(--ease);
+}
+.search:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(24,31,42,.07); }
+
+.inbox-item {
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+  padding: 16px 20px; margin-bottom: 10px; display: flex; gap: 16px; align-items: flex-start;
+  position: relative; overflow: hidden;
+  transition: transform .5s var(--ease), box-shadow .5s var(--ease), opacity .5s var(--ease);
+  animation: rise .8s var(--ease) both; box-shadow: 0 1px 2px rgba(20,24,33,.03);
+}
+.inbox-item::before {
+  content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--line-2); transition: background .4s var(--ease);
+}
+@keyframes rise { from { opacity: 0; transform: translateY(14px); filter: blur(5px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+.inbox-item:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.inbox-item:hover::before { background: var(--verm); }
+.inbox-item.is-accepted::before { background: var(--teal); }
+.inbox-item.is-accepted { opacity: .58; }
+.inbox-item.is-dismissed::before { background: var(--line); }
+.inbox-item.is-dismissed { opacity: .4; }
+.inbox-item.is-dismissed .ib-title { text-decoration: line-through; text-decoration-color: var(--verm); text-decoration-thickness: 1.5px; }
+
+.ib-time { font-family: var(--mono); font-size: 10.5px; color: var(--muted); width: 74px; flex-shrink: 0; padding-top: 3px; line-height: 1.7; }
+.ib-body { flex: 1; min-width: 0; }
+.ib-srcline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.src-tag { font-size: 10px; letter-spacing: -.01em; padding: 2.5px 9px; font-weight: 600; border-radius: 99px; }
+.src-google { background: var(--navy-soft); color: #27415e; }
+.src-bing { background: #dcebe9; color: #1f5e56; }
+.src-reddit { background: #fde3d3; color: #9a3d00; }
+.src-tiktok { background: #1a2433; color: #7df0dd; }
+.src-instagram { background: #f4dde9; color: #93305f; }
+.src-facebook { background: #dbe5f5; color: #2d4f8a; }
+.src-youtube { background: #f7dcd7; color: #a32014; }
+.tr-chip { font-size: 9.5px; letter-spacing: -.01em; padding: 2.5px 9px; border-radius: 99px; background: rgba(0,0,0,.05); color: var(--muted); font-weight: 600; }
+.tr-chip.tr-high, .tr-chip.tr-very_high { background: var(--verm-soft); color: var(--verm); }
+.tr-chip.tr-moderate { background: var(--gold-soft); color: var(--gold); }
+.kw-tag { font-family: var(--mono); font-size: 9.5px; color: var(--muted); }
+.kw-tag::before { content: '⌕ '; }
+.ib-title { font-size: 15.5px; font-weight: 600; line-height: 1.32; letter-spacing: -.015em; }
+.ib-title a { text-decoration: none; border-bottom: 1px solid transparent; }
+.ib-title a:hover { border-bottom-color: var(--verm); color: var(--verm); }
+.ib-meta { font-size: 12px; color: var(--muted); margin-top: 3px; display: flex; gap: 14px; flex-wrap: wrap; }
+.ib-meta .eng { font-family: var(--mono); font-size: 10.5px; }
+.ib-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; align-items: stretch; }
+.ib-actions select {
+  font-family: var(--mono); font-size: 10px; padding: 3px 5px; border: 1px solid var(--line-2);
+  background: var(--card); color: var(--muted); max-width: 130px;
+}
+
+.empty { text-align: center; padding: 84px 20px; color: var(--muted); animation: rise .8s var(--ease) both; }
+.empty .big { font-size: 24px; font-weight: 700; color: rgba(0,0,0,.22); margin-bottom: 9px; letter-spacing: -.025em; }
+
+/* ═══ CLIPS ═══ */
+.clip-row {
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px; margin-bottom: 10px;
+  padding: 14px 18px; display: flex; gap: 16px; align-items: flex-start;
+  transition: transform .5s var(--ease), box-shadow .5s var(--ease);
+  animation: rise .8s var(--ease) both; box-shadow: 0 1px 2px rgba(20,24,33,.03);
+}
+.clip-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.clip-date { font-family: var(--mono); font-size: 10.5px; color: var(--muted); width: 74px; flex-shrink: 0; padding-top: 3px; }
+.clip-thumb {
+  width: 88px; height: 66px; flex-shrink: 0; border-radius: 12px;
+  background: var(--paper-2); display: flex; align-items: center; justify-content: center;
+  overflow: hidden; cursor: pointer; position: relative;
+  box-shadow: 0 0 0 1px rgba(24,31,42,.08), 0 0 0 4px rgba(24,31,42,.03), 0 8px 18px -8px rgba(20,24,33,.25);
+  transition: transform .5s var(--ease), box-shadow .5s var(--ease);
+}
+.clip-thumb:hover { transform: scale(1.04) rotate(-1deg); box-shadow: 0 0 0 1px rgba(24,31,42,.12), 0 0 0 4px rgba(24,31,42,.05), 0 14px 28px -10px rgba(20,24,33,.35); }
+.clip-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.clip-thumb .ph { font-size: 19px; opacity: .35; }
+.clip-thumb.snapping .ph { animation: spin 1s linear infinite; display: inline-block; }
+.clip-body { flex: 1; min-width: 0; }
+.clip-pub { font-weight: 700; font-size: 13.5px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.plat-pill { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; border: 1px solid var(--line-2); padding: 1px 7px; color: var(--muted); }
+.clip-subj { font-size: 14px; margin-top: 4px; color: var(--ink-2); letter-spacing: -.01em; line-height: 1.4; }
+.clip-subj a { text-decoration: none; }
+.clip-subj a:hover { color: var(--verm); }
+.cat-tag { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; font-weight: 600; }
+.cat-daily_news { background: var(--navy-soft); color: #27415e; }
+.cat-yellow_ribbon { background: var(--gold-soft); color: #6b5413; }
+.cat-care_network { background: var(--teal-soft); color: var(--teal); }
+.cat-social_updates { background: #e8e2f4; color: #4c3a78; }
+.cat-issues { background: var(--verm-soft); color: var(--verm); }
+.cat-fyi { background: var(--paper-2); color: var(--muted); }
+
+/* ═══ STORIES ═══ */
+.story-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 20px;
+  padding: 22px 26px; margin-bottom: 14px; animation: rise .8s var(--ease) both;
+  box-shadow: inset 0 3px 0 var(--ink), 0 1px 2px rgba(20,24,33,.03);
+  transition: transform .5s var(--ease), box-shadow .5s var(--ease);
+}
+.story-card:hover { transform: translateY(-2px); box-shadow: inset 0 3px 0 var(--ink), var(--shadow-lift); }
+.story-hl { font-weight: 700; font-size: 18px; line-height: 1.25; letter-spacing: -.025em; }
+.story-sum { font-size: 13.5px; margin: 9px 0 10px; color: var(--ink-2); }
+.story-meta { font-size: 12px; color: var(--muted); border-top: 1px dashed var(--line-2); padding-top: 9px; }
+.story-meta div { margin-top: 2px; }
+.story-meta b { color: var(--ink-2); font-weight: 600; }
+
+/* ═══ REPORT ═══ */
+.report-wrap { display: flex; gap: 26px; align-items: flex-start; }
+.report-side { width: 254px; flex-shrink: 0; position: sticky; top: 20px; }
+.panel {
+  background: var(--card); border-radius: 20px; box-shadow: var(--bezel);
+  padding: 20px; margin-bottom: 18px;
+}
+.panel-title { font-family: var(--mono); font-size: 9.5px; letter-spacing: 2.2px; text-transform: uppercase; color: var(--verm); font-weight: 600; margin-bottom: 13px; }
+.f-label { display: block; font-family: var(--mono); font-size: 9px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--muted); margin: 12px 0 5px; }
+.f-input, .f-select, .f-area {
+  width: 100%; border: 1px solid var(--line); background: rgba(24,31,42,.025); padding: 8px 13px;
+  font-size: 12.5px; font-family: var(--sans); color: var(--ink); border-radius: 11px;
+  transition: border-color .4s var(--ease), box-shadow .4s var(--ease), background .4s var(--ease);
+}
+.f-area { resize: vertical; min-height: 64px; }
+.f-input:focus, .f-select:focus, .f-area:focus { outline: none; border-color: var(--ink); background: #fff; box-shadow: 0 0 0 3px rgba(24,31,42,.07); }
+.report-page {
+  flex: 1; background: #fff; border-radius: 22px; box-shadow: var(--bezel);
+  padding: 48px 54px; font-size: 12.5px; line-height: 1.7; max-width: 780px; font-family: var(--sans);
+}
+
+/* ═══ MODALS ═══ */
+.overlay {
+  position: fixed; inset: 0; background: rgba(13,18,26,.45);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+  backdrop-filter: blur(14px) saturate(1.1); -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  animation: fadein .45s var(--ease);
+}
+@keyframes fadein { from { opacity: 0; } }
+.modal {
+  background: var(--card); border-radius: 26px; box-shadow: var(--bezel), 0 40px 90px -30px rgba(13,18,26,.5);
+  width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; padding: 30px 32px;
+  animation: pop .55s var(--ease);
+}
+@keyframes pop { from { transform: scale(.94) translateY(20px); opacity: 0; filter: blur(4px); } }
+.modal-lg { max-width: 680px; }
+.modal h3 { font-weight: 700; font-size: 21px; letter-spacing: -.03em; margin-bottom: 16px; }
+.m-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+.f-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.kw-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.kw-row .f-input { flex: 1; }
+.kw-row .f-select { width: 150px; }
+.kw-del { background: none; border: none; color: var(--verm); cursor: pointer; font-size: 16px; padding: 2px 6px; }
+
+/* ═══ TOASTS ═══ */
+#toasts { position: fixed; bottom: 24px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 9px; }
+.toast {
+  background: rgba(19,25,34,.92); color: #f2eee4; font-size: 12.5px; padding: 12px 18px;
+  border-radius: 16px; border: 1px solid rgba(255,255,255,.09);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 18px 44px -14px rgba(13,18,26,.6);
+  display: flex; gap: 14px; align-items: center; animation: toastin .6s var(--ease); max-width: 380px;
+}
+@keyframes toastin { from { opacity: 0; transform: translateY(16px) scale(.96); } }
+.toast::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--verm); flex-shrink: 0; }
+.toast button { background: rgba(255,255,255,.1); border: none; border-radius: 99px; padding: 4px 12px; color: var(--gold); cursor: pointer; font-weight: 700; font-size: 11px; letter-spacing: .6px; transition: background .35s var(--ease); }
+.toast button:hover { background: rgba(255,255,255,.18); }
+
+.hidden { display: none !important; }
+
+@media (max-width: 900px) {
+  .rail { display: none; }
+  .content, .masthead { padding-left: 18px; padding-right: 18px; }
+  .report-wrap { flex-direction: column; }
+  .report-side { width: 100%; position: static; }
+}
+@media print { body * { visibility: hidden; } }
+</style>
+</head>
+<body>
+
+<!-- ═══ DAY LEDGER ═══ -->
+<aside class="rail">
+  <div class="rail-brand">
+    <div class="agency">That Marketing Guy</div>
+    <h1>The Monitor<em>.</em></h1>
+    <span class="client">SPS INTEL DESK</span>
+  </div>
+  <div class="ledger-head"><span>Day Ledger</span><span id="ledger-count"></span></div>
+  <div class="ledger" id="ledger"></div>
+  <div class="rail-foot">
+    <button class="rail-btn" onclick="openKeywords()">⌕ Search keywords</button>
+    <button class="rail-btn" onclick="exportDay()">↓ Export day (JSON)</button>
+    <button class="rail-btn" onclick="importDay()">↑ Import day (JSON)</button>
+  </div>
+</aside>
+
+<!-- ═══ MAIN ═══ -->
+<main class="main">
+  <div class="masthead">
+    <div class="masthead-top">
+      <div>
+        <div class="mast-kicker" id="mast-kicker">Daily Media Monitoring</div>
+        <div class="mast-title" id="mast-title">—</div>
+        <div class="mast-meta">
+          <span id="mast-fetched">not fetched yet</span>
+          <span id="mast-saved"></span>
+        </div>
+      </div>
+      <div class="mast-actions">
+        <button class="btn btn-verm" id="btn-fetch" onclick="doFetch(false)">⚡ Fetch news</button>
+        <button class="btn hidden" id="btn-social" onclick="doSocialFetch(false)">🛰 Social sweep</button>
+        <button class="btn" onclick="printClipsLog()">🖨 Clips log</button>
+        <button class="btn btn-ink" onclick="printReport()">🖨 Report PDF</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="inbox" onclick="setTab('inbox')">Inbox <span class="badge" id="b-inbox">0</span></button>
+      <button class="tab" data-tab="clips" onclick="setTab('clips')">Clips <span class="badge" id="b-clips">0</span></button>
+      <button class="tab" data-tab="stories" onclick="setTab('stories')">Stories <span class="badge" id="b-stories">0</span></button>
+      <button class="tab" data-tab="report" onclick="setTab('report')">Report</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div id="ribbon" class="ribbon hidden"></div>
+    <div id="fetchline" class="fetchline hidden"></div>
+
+    <!-- INBOX -->
+    <section id="tab-inbox">
+      <div class="toolbar">
+        <button class="chip active" data-f="new" onclick="setInboxFilter('new',this)">New</button>
+        <button class="chip" data-f="accepted" onclick="setInboxFilter('accepted',this)">Accepted</button>
+        <button class="chip" data-f="dismissed" onclick="setInboxFilter('dismissed',this)">Dismissed</button>
+        <button class="chip" data-f="all" onclick="setInboxFilter('all',this)">All</button>
+        <span class="spacer"></span>
+        <input class="search" id="inbox-search" placeholder="filter…" oninput="renderInbox()">
+      </div>
+      <div id="inbox-list"></div>
+      <div id="inbox-empty" class="empty hidden">
+        <div class="big">Nothing on the wire.</div>
+        <p id="inbox-empty-sub">Hit <b>⚡ Fetch mentions</b> to pull today's coverage.</p>
+      </div>
+    </section>
+
+    <!-- CLIPS -->
+    <section id="tab-clips" class="hidden">
+      <div class="toolbar">
+        <button class="btn btn-sm btn-ink" onclick="openClipModal()">+ Add clip manually</button>
+        <button class="btn btn-sm" onclick="snapAllClips()">📷 Snap all missing</button>
+        <span class="spacer"></span>
+        <input class="search" id="clips-search" placeholder="filter…" oninput="renderClips()">
+      </div>
+      <div id="clips-list"></div>
+      <div id="clips-empty" class="empty hidden">
+        <div class="big">No clips logged.</div>
+        <p>Accept items from the Inbox, or add one manually.</p>
+      </div>
+    </section>
+
+    <!-- STORIES -->
+    <section id="tab-stories" class="hidden">
+      <div class="toolbar">
+        <button class="btn btn-sm btn-ink" onclick="openStoryModal()">+ Add story</button>
+      </div>
+      <div id="stories-list"></div>
+      <div id="stories-empty" class="empty hidden">
+        <div class="big">No stories yet.</div>
+        <p>Group clips into summarised stories for the report. Tip: use <b>→ Story</b> on any clip.</p>
+      </div>
+    </section>
+
+    <!-- REPORT -->
+    <section id="tab-report" class="hidden">
+      <div class="report-wrap">
+        <div class="report-side">
+          <div class="panel">
+            <div class="panel-title">Report settings</div>
+            <label class="f-label">Report number</label>
+            <input class="f-input" id="cfg-num" placeholder="e.g. 101/2026" oninput="cfgChanged()">
+            <label class="f-label">Date / range heading</label>
+            <input class="f-input" id="cfg-date" placeholder="Friday, 13 June 2026" oninput="cfgChanged()">
+            <label class="f-label">News highlights</label>
+            <textarea class="f-area" id="cfg-highlights" oninput="cfgChanged()"></textarea>
+            <label class="f-label">Issues monitoring (fallback text)</label>
+            <textarea class="f-area" id="cfg-issues" oninput="cfgChanged()"></textarea>
+            <label class="f-label">FYI news (fallback text)</label>
+            <textarea class="f-area" id="cfg-fyi" oninput="cfgChanged()"></textarea>
+            <button class="btn" style="width:100%;margin-top:14px" onclick="copyReport()">Copy as text</button>
+          </div>
+        </div>
+        <div class="report-page" id="report-preview"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- ═══ CLIP MODAL ═══ -->
+<div class="overlay hidden" id="clip-modal">
+  <div class="modal">
+    <h3 id="clip-modal-title">Add clip</h3>
+    <div class="f-row">
+      <div><label class="f-label">Date</label><input class="f-input" id="cm-date" type="date"></div>
+      <div><label class="f-label">Category</label>
+        <select class="f-select" id="cm-cat">
+          <option value="daily_news">Daily News</option>
+          <option value="yellow_ribbon">Yellow Ribbon News</option>
+          <option value="care_network">CARE Network</option>
+          <option value="social_updates">Social Media Updates</option>
+          <option value="issues">Issues Monitoring</option>
+          <option value="fyi">FYI</option>
+        </select>
+      </div>
+    </div>
+    <div class="f-row">
+      <div><label class="f-label">Publication / account</label><input class="f-input" id="cm-pub" placeholder="CNA, AsiaOne…"></div>
+      <div><label class="f-label">Platform</label>
+        <select class="f-select" id="cm-plat">
+          <option value="">Online / Website</option>
+          <option>Facebook</option><option>Instagram</option><option>TikTok</option>
+          <option>X/Twitter</option><option>YouTube</option><option>LinkedIn</option>
+          <option>Reddit</option><option>Telegram</option>
+        </select>
+      </div>
+    </div>
+    <label class="f-label">Subject / caption</label>
+    <textarea class="f-area" id="cm-subject"></textarea>
+    <label class="f-label">Link</label>
+    <input class="f-input" id="cm-link" placeholder="https://…">
+    <div class="m-foot">
+      <button class="btn btn-ghost" onclick="closeModal('clip-modal')">Cancel</button>
+      <button class="btn btn-ink" onclick="saveClip()">Save clip</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ STORY MODAL ═══ -->
+<div class="overlay hidden" id="story-modal">
+  <div class="modal modal-lg">
+    <h3 id="story-modal-title">Add story</h3>
+    <label class="f-label">Category</label>
+    <select class="f-select" id="sm-cat">
+      <option value="daily_news">Daily News</option>
+      <option value="yellow_ribbon">Yellow Ribbon News</option>
+      <option value="care_network">CARE Network & Community Partners</option>
+      <option value="social_updates">Social Media Updates – SPS</option>
+      <option value="issues">Issues Monitoring</option>
+      <option value="fyi">FYI News</option>
+    </select>
+    <label class="f-label">Headline</label>
+    <input class="f-input" id="sm-hl">
+    <label class="f-label">Summary</label>
+    <textarea class="f-area" id="sm-summary" style="min-height:90px"></textarea>
+    <div class="f-row">
+      <div><label class="f-label">Reported by</label><input class="f-input" id="sm-reported" placeholder="CNA, The Straits Times…"></div>
+      <div><label class="f-label">Syndicated by</label><input class="f-input" id="sm-syndicated" placeholder="Nestia News…"></div>
+    </div>
+    <label class="f-label">Published on</label>
+    <input class="f-input" id="sm-published" placeholder="CNA (Facebook), ST (X)…">
+    <div class="f-row">
+      <div><label class="f-label" title="TikTok: Very High ≥400k views/≥14k eng · High ≥100k/≥3k · Moderate ≥40k/≥850 · Low ≥20k/≥350. Others: High >300 combined · Moderate 100–300 · Low <100 · Viral ≥1,500 in 3hrs">Traction — interactions</label>
+        <select class="f-select" id="sm-tr-int">
+          <option value="">Not set</option><option value="very_high">Very High / Viral</option>
+          <option value="high">High</option><option value="moderate">Moderate</option>
+          <option value="low">Low</option><option value="very_low">Very Low</option>
+        </select>
+      </div>
+      <div><label class="f-label">Traction — comments</label>
+        <select class="f-select" id="sm-tr-com">
+          <option value="">Not set</option><option value="very_high">Very High / Viral</option>
+          <option value="high">High</option><option value="moderate">Moderate</option>
+          <option value="low">Low</option><option value="very_low">Very Low</option>
+        </select>
+      </div>
+    </div>
+    <label class="f-label">Traction note (tone of comments, observations)</label>
+    <textarea class="f-area" id="sm-tr-note"></textarea>
+    <div class="m-foot">
+      <button class="btn btn-ghost" onclick="closeModal('story-modal')">Cancel</button>
+      <button class="btn btn-ink" onclick="saveStory()">Save story</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ KEYWORDS MODAL ═══ -->
+<div class="overlay hidden" id="kw-modal">
+  <div class="modal modal-lg">
+    <h3>Search keywords</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
+      Each keyword is searched on Google News (covers ST, CNA, Mothership, AsiaOne…) and Reddit.
+      New items land in the Inbox tagged with the category you pick here.
+    </p>
+    <div id="kw-list"></div>
+    <button class="btn btn-sm" style="margin-top:6px" onclick="addKwRow()">+ Add keyword</button>
+    <label class="f-label" style="margin-top:18px">Look-back window (days)</label>
+    <input class="f-input" id="kw-lookback" type="number" min="1" max="7" style="width:90px">
+
+    <div id="kw-accounts-section">
+      <h3 style="margin-top:24px;font-size:17px">Social accounts (Apify sweep)</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin-bottom:8px">
+        Handles swept by the 🛰 Social sweep — comma-separated, no @. Each sweep spends a little
+        Apify credit, so keep the lists focused (the MM Guide's highlighted accounts).
+      </p>
+      <label class="f-label">TikTok handles</label>
+      <textarea class="f-area" id="acc-tiktok" style="min-height:46px" placeholder="theonlinecitizen, …"></textarea>
+      <label class="f-label">Instagram handles</label>
+      <textarea class="f-area" id="acc-instagram" style="min-height:46px" placeholder="kixes, jolovan, …"></textarea>
+      <label class="f-label">Facebook page names</label>
+      <textarea class="f-area" id="acc-facebook" style="min-height:46px" placeholder="theonlinecitizen, …"></textarea>
+      <label class="f-label">YouTube channels (free RSS — fetched with news, no credits)</label>
+      <textarea class="f-area" id="acc-youtube" style="min-height:46px" placeholder="theonlinecitizenasia, …"></textarea>
+      <label class="f-label">Posts per account per sweep (cost control)</label>
+      <input class="f-input" id="kw-ppa" type="number" min="1" max="20" style="width:90px">
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-ghost" onclick="closeModal('kw-modal')">Cancel</button>
+      <button class="btn btn-ink" onclick="saveKeywords()">Save keywords</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+/* ════════════════════ STATE ════════════════════ */
+const CATS = {
+  daily_news: 'Daily News', yellow_ribbon: 'Yellow Ribbon News',
+  care_network: 'CARE Network & Community Partner-Related News',
+  social_updates: 'Social Media Updates', issues: 'Issues Monitoring', fyi: 'FYI News',
+};
+const TR_LABEL = { very_high: 'very high', high: 'high', moderate: 'moderate', low: 'low', very_low: 'very low' };
+
+const S = {
+  date: null,            // currently open day (YYYY-MM-DD)
+  day: null,             // full day object
+  days: [],              // ledger entries
+  tab: 'inbox',
+  inboxFilter: 'new',
+  keywords: null,
+  apiOk: true,
+  editClipId: null, editStoryId: null,
+};
+
+function localDate(d) { return (d || new Date()).toLocaleDateString('en-CA'); }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function el(id) { return document.getElementById(id); }
+
+function freshDay(date) {
+  return { date, fetched_at: null, social_fetched_at: null,
+    cfg: { num: '', date: prettyDate(date), highlights: '1. XXX', issues: '1. XXX', fyi: '1. XXX' },
+    inbox: [], clips: [], stories: [] };
+}
+
+const SRC_CLS = { 'Google News': 'src-google', 'Bing News': 'src-bing', 'Reddit': 'src-reddit',
+                  'TikTok': 'src-tiktok', 'Instagram': 'src-instagram', 'Facebook': 'src-facebook',
+                  'YouTube': 'src-youtube' };
+
+function prettyDate(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  return d.toLocaleDateString('en-SG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/* ════════════════════ API (graceful offline fallback) ════════════════════ */
+async function api(path, body) {
+  const opts = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {};
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  if (r.status === 202) return { __accepted: true };   // background function kicked off
+  const txt = await r.text();
+  return txt ? JSON.parse(txt) : { __accepted: true };
+}
+
+// Cloud fetches run as background functions (return 202). Poll the day until
+// its timestamp field advances past the baseline, or we time out.
+async function pollDay(date, field, baseline, timeoutMs = 240000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise(r => setTimeout(r, 4000));
+    let day; try { day = await api('/api/day/' + date); } catch (e) { continue; }
+    if (day && day[field] && day[field] !== baseline) return day;
+  }
+  throw new Error('timed out waiting for results');
+}
+
+let saveTimer = null;
+function persist() {
+  try { localStorage.setItem('sps-day-' + S.date, JSON.stringify(S.day)); } catch (e) {}
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      await api('/api/save', S.day);
+      el('mast-saved').textContent = '● saved ' + new Date().toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit' })
+        + (S.status?.supabase ? ' · ☁ cloud' : '');
+      el('mast-saved').className = 'ok';
+    } catch (e) {
+      el('mast-saved').textContent = '● saved locally (launcher offline)';
+      el('mast-saved').className = '';
+    }
+    refreshLedgerCounts();
+  }, 700);
+}
+
+/* ════════════════════ LEDGER ════════════════════ */
+async function loadLedger() {
+  try { S.days = await api('/api/days'); S.apiOk = true; }
+  catch (e) {
+    S.apiOk = false;
+    // offline: rebuild ledger from localStorage
+    S.days = Object.keys(localStorage).filter(k => k.startsWith('sps-day-'))
+      .map(k => { const d = JSON.parse(localStorage.getItem(k)); return { date: d.date, clips: (d.clips||[]).length, stories: (d.stories||[]).length, inbox_new: (d.inbox||[]).filter(i=>i.status==='new').length, fetched_at: d.fetched_at }; })
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }
+  renderLedger();
+}
+
+function renderLedger() {
+  const today = localDate();
+  const entries = [...S.days];
+  if (!entries.find(d => d.date === today)) entries.unshift({ date: today, clips: 0, stories: 0, inbox_new: 0, fetched_at: null });
+  el('ledger-count').textContent = entries.length + ' days';
+  el('ledger').innerHTML = entries.map(d => {
+    const dt = new Date(d.date + 'T12:00:00');
+    const label = d.date === today ? 'Today' : dt.toLocaleDateString('en-SG', { weekday: 'long' });
+    return `<button class="day-row ${d.date === S.date ? 'active' : ''}" onclick="openDay('${d.date}')">
+      <div class="d-date">${dt.toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}</div>
+      <div class="d-label"><span class="dot ${d.fetched_at ? 'fetched' : 'pending'}"></span>${label}
+        ${d.inbox_new ? `<span class="pill-new">${d.inbox_new} new</span>` : ''}</div>
+      <div class="d-counts"><span><b>${d.clips}</b> clips</span><span><b>${d.stories}</b> stories</span></div>
+    </button>`;
+  }).join('');
+}
+
+async function refreshLedgerCounts() {
+  if (!S.apiOk) { renderLedger(); return; }
+  try { S.days = await api('/api/days'); renderLedger(); } catch (e) {}
+}
+
+/* ════════════════════ DAY LOADING ════════════════════ */
+async function openDay(date, opts = {}) {
+  S.date = date;
+  let day = null;
+  try { day = await api('/api/day/' + date); }
+  catch (e) {
+    const raw = localStorage.getItem('sps-day-' + date);
+    if (raw) day = JSON.parse(raw);
+  }
+  S.day = day || freshDay(date);
+  renderLedger();
+  renderMasthead();
+  renderAll();
+
+  const today = localDate();
+  el('ribbon').classList.toggle('hidden', date === today);
+  if (date !== today) {
+    el('ribbon').innerHTML = `<span>📁 Viewing the archive for <b>${esc(prettyDate(date))}</b> — loaded from disk, nothing re-fetched.</span>
+      <button class="btn btn-sm" onclick="openDay('${today}')">Jump to today →</button>`;
+  }
+
+  // Auto-fetch: only for today, only if never fetched (cached forever after)
+  if (!opts.noFetch && date === today && !S.day.fetched_at && S.apiOk) doFetch(false, true);
+}
+
+function renderMasthead() {
+  el('mast-title').textContent = prettyDate(S.date);
+  el('mast-kicker').textContent = S.date === localDate() ? 'Daily media monitoring — live desk' : 'Daily media monitoring — archive';
+  const f = S.day.fetched_at, sf = S.day.social_fetched_at;
+  const stamp = d => new Date(d).toLocaleString('en-SG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  el('mast-fetched').textContent =
+    (f ? '⚡ news ' + stamp(f) : 'news not fetched') + (S.status?.apify ? (sf ? '  ·  🛰 socials ' + stamp(sf) : '  ·  socials not swept') : '');
+  el('btn-fetch').textContent = f ? '⚡ Re-fetch news' : '⚡ Fetch news';
+  el('btn-social').textContent = sf ? '🛰 Re-sweep socials' : '🛰 Social sweep';
+}
+
+// Resolve a clip's hero image to a usable src. Remote URLs (cloud: og:image,
+// Apify CDN) are used as-is; local paths (data/shots/x.png) get a cache-buster.
+function shotSrc(c) {
+  if (!c.shot) return '';
+  return /^https?:/.test(c.shot) ? c.shot : c.shot + '?t=' + (c.shotAt || 0);
+}
+
+function fmtN(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return String(n);
+}
+
+/* ════════════════════ FETCH ════════════════════ */
+async function doFetch(force, auto) {
+  if (!S.apiOk) { toast('Fetching needs the local launcher (Launch SPS Monitor.command).'); return; }
+  if (S.day.fetched_at && !force && !auto) {
+    if (!confirm('Already fetched today (results are cached). Fetch again and merge new items?')) return;
+    force = true;
+  }
+  const fl = el('fetchline');
+  fl.classList.remove('hidden');
+  fl.innerHTML = `<div class="spinner"></div><span>Sweeping the wire — Google News & Reddit, ${auto ? 'first fetch of the day' : 'merging fresh items'}…</span>`;
+  el('btn-fetch').disabled = true;
+  try {
+    const baseline = S.day.fetched_at || null;
+    const res = await api('/api/fetch', { date: S.date, force: !!force });
+    if (res.__accepted) {                      // cloud background job → poll
+      S.day = await pollDay(S.date, 'fetched_at', baseline);
+    } else {
+      if (!res.ok) throw new Error(res.error);
+      S.day = res.day;
+    }
+    const fresh = S.day.inbox.filter(i => i.status === 'new').length;
+    renderMasthead(); renderAll(); refreshLedgerCounts();
+    fl.innerHTML = `<span>✅ <b>Fetch complete</b> — ${S.day.inbox.length} items on the wire, <b>${fresh} awaiting triage</b>.${(S.day.fetch_errors || []).length ? ' <span style="color:var(--verm)">(' + S.day.fetch_errors.length + ' source errors)</span>' : ''}</span>
+      <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
+    setTimeout(() => fl.classList.add('hidden'), 6000);
+  } catch (e) {
+    fl.innerHTML = `<span>❌ Fetch failed: ${esc(e.message)} — check your connection, then try again.</span>
+      <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
+  }
+  el('btn-fetch').disabled = false;
+}
+
+async function doSocialFetch(force) {
+  if (!S.apiOk) { toast('The social sweep needs the local launcher running.'); return; }
+  if (S.day.social_fetched_at && !force) {
+    if (!confirm('Socials already swept today (results are cached). Sweep again? This spends Apify credits.')) return;
+    force = true;
+  }
+  const fl = el('fetchline');
+  fl.classList.remove('hidden');
+  fl.innerHTML = `<div class="spinner"></div><span>🛰 Sweeping social accounts via Apify (TikTok · Instagram · Facebook) — this takes 1–3 minutes…</span>`;
+  el('btn-social').disabled = true;
+  try {
+    const baseline = S.day.social_fetched_at || null;
+    const res = await api('/api/fetch-social', { date: S.date, force: !!force });
+    if (res.__accepted) {                       // cloud background job → poll (slow)
+      S.day = await pollDay(S.date, 'social_fetched_at', baseline, 360000);
+    } else {
+      if (!res.ok) throw new Error(res.error);
+      S.day = res.day;
+    }
+    const fresh = S.day.inbox.filter(i => i.status === 'new').length;
+    renderMasthead(); renderAll(); refreshLedgerCounts();
+    const errs = (S.day.social_errors || []);
+    fl.innerHTML = `<span>✅ <b>Social sweep complete</b> — ${S.day.inbox.length} items on the wire, <b>${fresh} awaiting triage</b>.${errs.length ? ' <span style="color:var(--verm)">(' + esc(errs.join(' · ')) + ')</span>' : ''}</span>
+      <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
+    if (!errs.length) setTimeout(() => fl.classList.add('hidden'), 7000);
+  } catch (e) {
+    fl.innerHTML = `<span>❌ Social sweep failed: ${esc(e.message)}</span>
+      <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
+  }
+  el('btn-social').disabled = false;
+}
+
+/* ════════════════════ TABS ════════════════════ */
+function setTab(t) {
+  S.tab = t;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  ['inbox', 'clips', 'stories', 'report'].forEach(x => el('tab-' + x).classList.toggle('hidden', x !== t));
+  if (t === 'report') { fillCfgInputs(); renderReport(); }
+}
+
+function badges() {
+  el('b-inbox').textContent = (S.day.inbox || []).filter(i => i.status === 'new').length;
+  el('b-clips').textContent = (S.day.clips || []).length;
+  el('b-stories').textContent = (S.day.stories || []).length;
+}
+
+function renderAll() { renderInbox(); renderClips(); renderStories(); badges(); if (S.tab === 'report') { fillCfgInputs(); renderReport(); } }
+
+/* ════════════════════ INBOX ════════════════════ */
+function setInboxFilter(f, btn) {
+  S.inboxFilter = f;
+  document.querySelectorAll('[data-f]').forEach(b => b.classList.toggle('active', b === btn));
+  renderInbox();
+}
+
+function timeAgo(iso) {
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (m < 60) return m + 'm ago';
+  if (m < 1440) return Math.round(m / 60) + 'h ago';
+  return Math.round(m / 1440) + 'd ago';
+}
+
+function renderInbox() {
+  const q = (el('inbox-search').value || '').toLowerCase();
+  let items = S.day.inbox || [];
+  if (S.inboxFilter !== 'all') items = items.filter(i => i.status === S.inboxFilter);
+  if (q) items = items.filter(i => (i.title + i.pub + i.kw).toLowerCase().includes(q));
+
+  el('inbox-empty').classList.toggle('hidden', items.length > 0);
+  el('inbox-empty-sub').innerHTML = (S.day.inbox || []).length
+    ? 'No items match this filter.'
+    : (S.day.fetched_at ? 'Fetched, but nothing matched your keywords in the look-back window.' : 'Hit <b>⚡ Fetch mentions</b> to pull today\'s coverage.');
+
+  el('inbox-list').innerHTML = items.map((it, idx) => {
+    let eng = '';
+    if (it.eng) {
+      const e = it.eng, parts = [];
+      if (e.plays) parts.push('▶ ' + fmtN(e.plays));
+      if (e.likes) parts.push('♥ ' + fmtN(e.likes));
+      if (e.comments) parts.push('💬 ' + fmtN(e.comments));
+      if (e.shares) parts.push('↗ ' + fmtN(e.shares));
+      if (e.score) parts.push('▲ ' + fmtN(e.score));
+      eng = parts.length ? `<span class="eng">${parts.join(' · ')}</span>` : '';
+    }
+    const trc = it.traction ? `<span class="tr-chip tr-${it.traction}">${it.traction.replace('_', ' ')}</span>` : '';
+    const srcCls = SRC_CLS[it.src] || 'src-google';
+    return `<div class="inbox-item is-${it.status}" style="animation-delay:${Math.min(idx * 28, 280)}ms">
+      <div class="ib-time">${timeAgo(it.published)}<br>${new Date(it.published).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit' })}</div>
+      <div class="ib-body">
+        <div class="ib-srcline"><span class="src-tag ${srcCls}">${esc(it.src)}</span><span class="kw-tag">${esc(it.kw)}</span>${trc}</div>
+        <div class="ib-title"><a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a></div>
+        <div class="ib-meta"><span>${esc(it.pub)}${it.plat ? ' · ' + esc(it.plat) : ''}</span>${eng}</div>
+      </div>
+      <div class="ib-actions">
+        ${it.status === 'new' ? `
+          <select onchange="this.dataset.v=this.value" data-v="${esc(it.cat)}" id="cat-${it.id}">
+            ${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${k === it.cat ? 'selected' : ''}>${v.split(' &')[0].split(' and ')[0]}</option>`).join('')}
+          </select>
+          <button class="btn btn-sm btn-ink" onclick="acceptItem('${it.id}')">✓ Accept</button>
+          <button class="btn btn-sm btn-ghost" onclick="dismissItem('${it.id}')">✕ Dismiss</button>`
+        : it.status === 'accepted'
+          ? `<span class="src-tag" style="background:var(--teal-soft);color:var(--teal)">✓ CLIPPED</span>`
+          : `<button class="btn btn-sm btn-ghost" onclick="restoreItem('${it.id}')">↩ Restore</button>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function findInbox(id) { return (S.day.inbox || []).find(i => i.id === id); }
+
+function acceptItem(id) {
+  const it = findInbox(id);
+  if (!it) return;
+  const catSel = el('cat-' + id);
+  const cat = catSel ? catSel.value : it.cat;
+  it.status = 'accepted';
+  const clipId = 'c' + Date.now();
+  S.day.clips.push({
+    id: clipId, date: localDate(new Date(it.published)),
+    pub: it.pub, plat: it.plat || (it.src === 'Reddit' ? 'Reddit' : ''),
+    subject: it.title, link: it.link, cat, fromInbox: it.id,
+    shot: it.img || null,     // socials carry a hero image URL from the sweep
+  });
+  persist(); renderInbox(); renderClips(); badges();
+  if (!it.img) snapClip(clipId, true);   // otherwise capture one (news og:image / Chrome)
+  toast(`Clipped “${it.title.slice(0, 48)}…”`, 'Undo', () => {
+    it.status = 'new';
+    S.day.clips = S.day.clips.filter(c => c.fromInbox !== it.id);
+    persist(); renderAll();
+  });
+}
+
+function dismissItem(id) {
+  const it = findInbox(id);
+  if (!it) return;
+  it.status = 'dismissed';
+  persist(); renderInbox(); badges();
+  toast('Dismissed.', 'Undo', () => { it.status = 'new'; persist(); renderAll(); });
+}
+
+function restoreItem(id) {
+  const it = findInbox(id);
+  if (it) { it.status = 'new'; persist(); renderAll(); }
+}
+
+/* ════════════════════ CLIPS ════════════════════ */
+function renderClips() {
+  const q = (el('clips-search').value || '').toLowerCase();
+  let clips = S.day.clips || [];
+  if (q) clips = clips.filter(c => (c.pub + c.subject + (c.plat || '')).toLowerCase().includes(q));
+  el('clips-empty').classList.toggle('hidden', clips.length > 0);
+  el('clips-list').innerHTML = clips.map((c, idx) => `
+    <div class="clip-row" style="animation-delay:${Math.min(idx * 25, 250)}ms">
+      <div class="clip-thumb" id="thumb-${esc(c.id)}" onclick="${c.shot ? `window.open('${esc(shotSrc(c))}','_blank')` : `snapClip('${esc(c.id)}')`}" title="${c.shot ? 'View hero shot' : 'Capture hero shot'}">
+        ${c.shot ? `<img src="${esc(shotSrc(c))}" referrerpolicy="no-referrer" onerror="this.parentNode.innerHTML='<span class=ph>📷</span>'">` : '<span class="ph">📷</span>'}
+      </div>
+      <div class="clip-body">
+        <div class="clip-pub">${esc(c.pub)} ${c.plat ? `<span class="plat-pill">${esc(c.plat)}</span>` : ''} <span class="cat-tag cat-${esc(c.cat)}">${(CATS[c.cat] || c.cat).split(' &')[0].split(' and ')[0]}</span> <span class="clip-date" style="width:auto">${esc(c.date)}</span></div>
+      <div class="clip-subj">${c.link ? `<a href="${esc(c.link)}" target="_blank" rel="noopener">${esc(c.subject)}</a>` : esc(c.subject)}</div>
+      </div>
+      <div class="ib-actions">
+        <button class="btn btn-sm" onclick="storyFromClip('${esc(c.id)}')">→ Story</button>
+        <button class="btn btn-sm btn-ghost" onclick="snapClip('${esc(c.id)}')">${c.shot ? '📷 Re-snap' : '📷 Snap'}</button>
+        <button class="btn btn-sm btn-ghost" onclick="editClip('${esc(c.id)}')">Edit</button>
+        <button class="btn btn-sm btn-ghost" style="color:var(--verm)" onclick="delClip('${esc(c.id)}')">Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+/* ── hero shots ── */
+async function snapClip(id, silent) {
+  const c = S.day.clips.find(x => x.id === id);
+  if (!c) return false;
+  if (!c.link) { if (!silent) toast('This clip has no link to capture.'); return false; }
+  const th = el('thumb-' + id);
+  if (th) { th.classList.add('snapping'); th.innerHTML = '<span class="ph">⏳</span>'; }
+  try {
+    const res = await api('/api/snap', { clip_id: id, link: c.link });
+    if (!res.ok) throw new Error(res.error);
+    c.shot = res.shot;
+    c.shotAt = Date.now();
+    persist();
+    renderClips();
+    if (!silent) toast('Hero shot captured.');
+    return true;
+  } catch (e) {
+    renderClips();
+    if (!silent) toast('Snap failed: ' + e.message);
+    return false;
+  }
+}
+
+async function snapAllClips() {
+  const missing = (S.day.clips || []).filter(c => !c.shot && c.link);
+  if (!missing.length) { toast('All clips already have hero shots.'); return; }
+  const fl = el('fetchline');
+  fl.classList.remove('hidden');
+  let done = 0, fail = 0;
+  for (const c of missing) {
+    fl.innerHTML = `<div class="spinner"></div><span>📷 Capturing hero shots — ${done + fail + 1} of ${missing.length} (${esc(c.pub)})…</span>`;
+    (await snapClip(c.id, true)) ? done++ : fail++;
+  }
+  fl.innerHTML = `<span>✅ Hero shots: <b>${done} captured</b>${fail ? `, <span style="color:var(--verm)">${fail} failed</span> (snap those individually)` : ''}.</span>
+    <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
+  setTimeout(() => fl.classList.add('hidden'), 7000);
+}
+
+function openClipModal(id) {
+  S.editClipId = id || null;
+  const c = id ? S.day.clips.find(x => x.id === id) : null;
+  el('clip-modal-title').textContent = id ? 'Edit clip' : 'Add clip';
+  el('cm-date').value = c ? c.date : localDate();
+  el('cm-cat').value = c ? c.cat : 'daily_news';
+  el('cm-pub').value = c ? c.pub : '';
+  el('cm-plat').value = c ? (c.plat || '') : '';
+  el('cm-subject').value = c ? c.subject : '';
+  el('cm-link').value = c ? (c.link || '') : '';
+  el('clip-modal').classList.remove('hidden');
+  setTimeout(() => el('cm-pub').focus(), 60);
+}
+function editClip(id) { openClipModal(id); }
+
+function saveClip() {
+  const pub = el('cm-pub').value.trim();
+  if (!pub) { toast('Publication name is required.'); return; }
+  const c = { date: el('cm-date').value, cat: el('cm-cat').value, pub,
+    plat: el('cm-plat').value, subject: el('cm-subject').value.trim(), link: el('cm-link').value.trim() };
+  if (S.editClipId) {
+    const i = S.day.clips.findIndex(x => x.id === S.editClipId);
+    if (i !== -1) S.day.clips[i] = { ...S.day.clips[i], ...c };
+  } else {
+    c.id = 'c' + Date.now();
+    S.day.clips.push(c);
+  }
+  closeModal('clip-modal'); persist(); renderClips(); badges();
+}
+
+function delClip(id) {
+  const c = S.day.clips.find(x => x.id === id);
+  if (!confirm('Delete this clip?')) return;
+  S.day.clips = S.day.clips.filter(x => x.id !== id);
+  if (c && c.fromInbox) { const it = findInbox(c.fromInbox); if (it) it.status = 'new'; }
+  persist(); renderAll();
+}
+
+function storyFromClip(id) {
+  const c = S.day.clips.find(x => x.id === id);
+  if (!c) return;
+  openStoryModal();
+  el('sm-cat').value = c.cat === 'fyi' ? 'fyi' : c.cat;
+  el('sm-hl').value = c.subject.length > 110 ? c.subject.slice(0, 110) + '…' : c.subject;
+  el('sm-reported').value = c.plat ? '' : c.pub;
+  el('sm-published').value = c.plat ? `${c.pub} (${c.plat})` : '';
+}
+
+/* ════════════════════ STORIES ════════════════════ */
+function tractionLine(s) {
+  const parts = [];
+  if (s.trInt && s.trCom) parts.push(`To date, traction is ${TR_LABEL[s.trInt]} for interactions and ${TR_LABEL[s.trCom]} for comments across all platforms.`);
+  else if (s.trInt || s.trCom) parts.push(`To date, traction is ${TR_LABEL[s.trInt || s.trCom]} for ${s.trInt ? 'interactions' : 'comments'}.`);
+  if (s.trNote) parts.push(s.trNote);
+  return parts.join(' ');
+}
+
+function renderStories() {
+  const stories = S.day.stories || [];
+  el('stories-empty').classList.toggle('hidden', stories.length > 0);
+  el('stories-list').innerHTML = stories.map((s, idx) => `
+    <div class="story-card" style="animation-delay:${Math.min(idx * 30, 240)}ms">
+      <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
+        <div>
+          <span class="cat-tag cat-${esc(s.cat)}">${(CATS[s.cat] || s.cat).split(' &')[0].split(' and ')[0]}</span>
+          <div class="story-hl" style="margin-top:7px">${esc(s.hl)}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm btn-ghost" onclick="editStory('${esc(s.id)}')">Edit</button>
+          <button class="btn btn-sm btn-ghost" style="color:var(--verm)" onclick="delStory('${esc(s.id)}')">Delete</button>
+        </div>
+      </div>
+      <div class="story-sum">${esc(s.summary) || '<em>No summary yet</em>'}</div>
+      <div class="story-meta">
+        ${s.reported ? `<div><b>Reported by:</b> ${esc(s.reported)}</div>` : ''}
+        ${s.syndicated ? `<div style="padding-left:14px"><b>Syndicated by:</b> ${esc(s.syndicated)}</div>` : ''}
+        ${s.published ? `<div><b>Published on:</b> ${esc(s.published)}</div>` : ''}
+        ${tractionLine(s) ? `<div>${esc(tractionLine(s))}</div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+function openStoryModal(id) {
+  S.editStoryId = id || null;
+  const s = id ? S.day.stories.find(x => x.id === id) : null;
+  el('story-modal-title').textContent = id ? 'Edit story' : 'Add story';
+  el('sm-cat').value = s ? s.cat : 'daily_news';
+  el('sm-hl').value = s ? s.hl : '';
+  el('sm-summary').value = s ? s.summary : '';
+  el('sm-reported').value = s ? s.reported : '';
+  el('sm-syndicated').value = s ? s.syndicated : '';
+  el('sm-published').value = s ? s.published : '';
+  el('sm-tr-int').value = s ? (s.trInt || '') : '';
+  el('sm-tr-com').value = s ? (s.trCom || '') : '';
+  el('sm-tr-note').value = s ? s.trNote : '';
+  el('story-modal').classList.remove('hidden');
+  setTimeout(() => el('sm-hl').focus(), 60);
+}
+function editStory(id) { openStoryModal(id); }
+
+function saveStory() {
+  const hl = el('sm-hl').value.trim();
+  if (!hl) { toast('Headline is required.'); return; }
+  const s = { cat: el('sm-cat').value, hl, summary: el('sm-summary').value.trim(),
+    reported: el('sm-reported').value.trim(), syndicated: el('sm-syndicated').value.trim(),
+    published: el('sm-published').value.trim(), trInt: el('sm-tr-int').value, trCom: el('sm-tr-com').value,
+    trNote: el('sm-tr-note').value.trim() };
+  if (S.editStoryId) {
+    const i = S.day.stories.findIndex(x => x.id === S.editStoryId);
+    if (i !== -1) S.day.stories[i] = { ...S.day.stories[i], ...s };
+  } else {
+    s.id = 's' + Date.now();
+    S.day.stories.push(s);
+  }
+  closeModal('story-modal'); persist(); renderStories(); badges();
+}
+
+function delStory(id) {
+  if (!confirm('Delete this story?')) return;
+  S.day.stories = S.day.stories.filter(x => x.id !== id);
+  persist(); renderStories(); badges();
+}
+
+/* ════════════════════ REPORT ════════════════════ */
+function fillCfgInputs() {
+  el('cfg-num').value = S.day.cfg.num || '';
+  el('cfg-date').value = S.day.cfg.date || prettyDate(S.date);
+  el('cfg-highlights').value = S.day.cfg.highlights || '';
+  el('cfg-issues').value = S.day.cfg.issues || '';
+  el('cfg-fyi').value = S.day.cfg.fyi || '';
+}
+
+function cfgChanged() {
+  S.day.cfg = { num: el('cfg-num').value.trim(), date: el('cfg-date').value.trim(),
+    highlights: el('cfg-highlights').value, issues: el('cfg-issues').value, fyi: el('cfg-fyi').value };
+  persist(); renderReport();
+}
+
+function storyBlockHtml(s, i) {
+  let meta = '';
+  if (s.reported) {
+    meta += `<li><b>Reported by:</b> ${esc(s.reported)}`;
+    if (s.syndicated) meta += `<ul style="margin:2px 0 0 16px;list-style:circle"><li><b>Syndicated by:</b> ${esc(s.syndicated)}</li></ul>`;
+    meta += `</li>`;
+  } else if (s.syndicated) meta += `<li><b>Syndicated by:</b> ${esc(s.syndicated)}</li>`;
+  if (s.published) meta += `<li><b>Published on:</b> ${esc(s.published)}</li>`;
+  const tr = tractionLine(s);
+  if (tr) meta += `<li>${esc(tr)}</li>`;
+  return `<div style="margin-bottom:16px"><div style="font-weight:700;margin-bottom:4px">${i + 1}. ${esc(s.hl)}</div>
+    <div style="margin-bottom:6px">${esc(s.summary || '')}</div>
+    ${meta ? `<ul style="margin:0 0 0 18px;padding:0;font-size:11.5px">${meta}</ul>` : ''}</div>`;
+}
+
+function reportHtml() {
+  const cfg = S.day.cfg;
+  const bar = t => `<div style="background:#16263d;color:#fff;font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:5px 10px;margin:0 0 12px">${t}</div>`;
+  let h = `<div style="text-align:right;font-size:11px;font-weight:700;color:#555">${esc(cfg.num) || '___/2026'}</div>
+    <div style="text-align:center;font-weight:900;font-size:15.5px;text-transform:uppercase;color:#16263d;letter-spacing:.4px;margin:6px 0 22px">Media Monitoring Report –<br>${esc(cfg.date) || '[Date]'}</div>`;
+  h += `<div style="margin-bottom:24px">${bar('News Highlights')}<pre style="font-family:inherit;white-space:pre-wrap">${esc(cfg.highlights) || '1. XXX'}</pre></div>`;
+  const issues = (S.day.stories || []).filter(s => s.cat === 'issues');
+  h += `<div style="margin-bottom:24px"><div style="color:#c0391b;font-weight:800;font-size:12.5px;margin-bottom:10px">Issues Monitoring</div>`;
+  h += issues.length ? issues.map((s, i) => storyBlockHtml(s, i)).join('') : `<pre style="font-family:inherit;white-space:pre-wrap">${esc(cfg.issues) || '1. XXX'}</pre>`;
+  h += `</div>`;
+  ['daily_news', 'yellow_ribbon', 'care_network', 'social_updates'].forEach(cat => {
+    const st = (S.day.stories || []).filter(s => s.cat === cat);
+    if (!st.length) return;
+    h += `<div style="margin-bottom:24px">${bar(CATS[cat])}`;
+    if (cat === 'social_updates') h += `<div style="font-style:italic;margin-bottom:8px">Singapore Prison Service</div>`;
+    h += st.map((s, i) => storyBlockHtml(s, i)).join('') + `</div>`;
+  });
+  const fyi = (S.day.stories || []).filter(s => s.cat === 'fyi');
+  h += `<div>${bar('FYI News')}`;
+  h += fyi.length ? fyi.map((s, i) => storyBlockHtml(s, i)).join('') : `<pre style="font-family:inherit;white-space:pre-wrap">${esc(cfg.fyi) || '1. XXX'}</pre>`;
+  h += `</div>`;
+  return h;
+}
+
+function renderReport() { el('report-preview').innerHTML = reportHtml(); }
+
+function printReport() {
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SPS Media Monitoring Report</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,system-ui,sans-serif;color:#1c2b3a;font-size:11.5pt;line-height:1.65;padding:34px 44px}pre{font-family:inherit;white-space:pre-wrap}ul{margin-left:18px}</style>
+    </head><body>${reportHtml()}</body></html>`);
+  win.document.close(); win.focus();
+  setTimeout(() => win.print(), 500);
+}
+
+function storyTextBlock(s, i) {
+  let t = `${i + 1}. ${s.hl}\n${s.summary || ''}\n`;
+  if (s.reported) t += `• Reported by: ${s.reported}\n`;
+  if (s.syndicated) t += `   o Syndicated by: ${s.syndicated}\n`;
+  if (s.published) t += `• Published on: ${s.published}\n`;
+  const tr = tractionLine(s);
+  if (tr) t += `• ${tr}\n`;
+  return t + '\n';
+}
+
+function copyReport() {
+  const cfg = S.day.cfg;
+  let t = `${cfg.num}\n\nMEDIA MONITORING REPORT –\n${cfg.date}\n\nNews Highlights\n\n${cfg.highlights || '1. XXX'}\n\nIssues Monitoring\n\n`;
+  const issues = (S.day.stories || []).filter(s => s.cat === 'issues');
+  t += issues.length ? issues.map(storyTextBlock).join('') : (cfg.issues || '1. XXX') + '\n\n';
+  ['daily_news', 'yellow_ribbon', 'care_network', 'social_updates'].forEach(cat => {
+    const st = (S.day.stories || []).filter(s => s.cat === cat);
+    if (!st.length) return;
+    t += `${CATS[cat]}\n\n` + (cat === 'social_updates' ? 'Singapore Prison Service\n\n' : '') + st.map(storyTextBlock).join('');
+  });
+  t += `FYI News\n\n`;
+  const fyi = (S.day.stories || []).filter(s => s.cat === 'fyi');
+  t += fyi.length ? fyi.map(storyTextBlock).join('') : (cfg.fyi || '1. XXX');
+  navigator.clipboard.writeText(t).then(() => toast('Report copied to clipboard.'));
+}
+
+/* ════════════════════ CLIPS LOG PRINT ════════════════════ */
+function printClipsLog() {
+  const clips = S.day.clips || [];
+  if (!clips.length) { toast('No clips to print for this day.'); return; }
+  const fmt = d => { const dt = new Date(d + 'T00:00:00'); return isNaN(dt) ? d : dt.toLocaleDateString('en-SG', { day: 'numeric', month: 'long', year: 'numeric' }); };
+  const missing = clips.filter(c => !c.shot && c.link).length;
+  if (missing && confirm(`${missing} clip${missing > 1 ? 's have' : ' has'} no hero shot yet. Capture them first? (Recommended — Cancel prints without them)`)) {
+    snapAllClips().then(() => printClipsLog());
+    return;
+  }
+  const blocks = [...clips].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(c => `
+    <div class="pg"><table>
+      <tr><td class="l">Date:</td><td>${esc(fmt(c.date))}</td></tr>
+      <tr><td class="l">Publication:</td><td>${esc(c.pub)}${c.plat ? ' (' + esc(c.plat) + ')' : ''}</td></tr>
+      <tr><td class="l">Subject:</td><td>${esc(c.subject || '–')}</td></tr>
+      <tr><td class="l">Link:</td><td>${c.link ? `<a href="${esc(c.link)}">${esc(c.link)}</a>` : '–'}</td></tr>
+    </table><div class="rule"></div>
+    ${c.shot ? `<img class="shot" referrerpolicy="no-referrer" src="${/^https?:/.test(c.shot) ? esc(c.shot) : location.origin + '/' + esc(c.shot)}">` : '<div class="note">[ No hero shot captured ]</div>'}</div>`).join('');
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SPS News Clips — ${esc(S.date)}</title><style>
+    *{margin:0;padding:0;box-sizing:border-box} body{font-family:system-ui,sans-serif;font-size:11pt;color:#1c2b3a;padding:30px 40px;line-height:1.55}
+    .pg{page-break-after:always;padding-top:8px} table{border-collapse:collapse;width:100%} td{vertical-align:top;padding:2px 0}
+    td.l{font-weight:700;width:110px} a{color:#2471a3;word-break:break-all}
+    .rule{border-bottom:3px solid #1c2b3a;margin:10px 0 14px} .note{color:#9aa7b4;font-size:10pt;font-style:italic}
+    img.shot{display:block;max-width:430px;max-height:640px;object-fit:contain;border:1px solid #d6d0c2}
+  </style></head><body>${blocks}</body></html>`);
+  win.document.close(); win.focus();
+  setTimeout(() => win.print(), 500);
+}
+
+/* ════════════════════ KEYWORDS ════════════════════ */
+async function openKeywords() {
+  try { S.keywords = await api('/api/keywords'); }
+  catch (e) { toast('Keywords need the local launcher running.'); return; }
+  el('kw-lookback').value = S.keywords.lookback_days || 2;
+  el('kw-ppa').value = S.keywords.posts_per_account || 5;
+  const acc = S.keywords.accounts || {};
+  el('acc-tiktok').value = (acc.tiktok || []).join(', ');
+  el('acc-instagram').value = (acc.instagram || []).join(', ');
+  el('acc-facebook').value = (acc.facebook || []).join(', ');
+  el('acc-youtube').value = (acc.youtube || []).join(', ');
+  el('kw-accounts-section').classList.toggle('hidden', !S.status?.apify);
+  renderKwRows();
+  el('kw-modal').classList.remove('hidden');
+}
+
+function parseHandles(v) {
+  return v.split(/[,\n]/).map(h => h.trim().replace(/^@/, '')).filter(Boolean);
+}
+
+function renderKwRows() {
+  el('kw-list').innerHTML = (S.keywords.keywords || []).map((k, i) => `
+    <div class="kw-row">
+      <input class="f-input" value="${esc(k.q)}" onchange="S.keywords.keywords[${i}].q=this.value">
+      <select class="f-select" onchange="S.keywords.keywords[${i}].cat=this.value">
+        ${Object.entries(CATS).map(([key, v]) => `<option value="${key}" ${key === k.cat ? 'selected' : ''}>${v.split(' &')[0].split(' and ')[0]}</option>`).join('')}
+      </select>
+      <button class="kw-del" title="Remove" onclick="S.keywords.keywords.splice(${i},1);renderKwRows()">✕</button>
+    </div>`).join('');
+}
+
+function addKwRow() {
+  S.keywords.keywords.push({ q: '', cat: 'daily_news' });
+  renderKwRows();
+  const inputs = el('kw-list').querySelectorAll('input');
+  inputs[inputs.length - 1].focus();
+}
+
+async function saveKeywords() {
+  S.keywords.keywords = S.keywords.keywords.filter(k => k.q.trim());
+  S.keywords.lookback_days = Math.max(1, Math.min(7, parseInt(el('kw-lookback').value) || 2));
+  S.keywords.posts_per_account = Math.max(1, Math.min(20, parseInt(el('kw-ppa').value) || 5));
+  S.keywords.accounts = {
+    tiktok: parseHandles(el('acc-tiktok').value),
+    instagram: parseHandles(el('acc-instagram').value),
+    facebook: parseHandles(el('acc-facebook').value),
+    youtube: parseHandles(el('acc-youtube').value),
+  };
+  try {
+    await api('/api/keywords', S.keywords);
+    closeModal('kw-modal');
+    toast('Keywords saved — they apply on the next fetch.');
+  } catch (e) { toast('Could not save: ' + e.message); }
+}
+
+/* ════════════════════ EXPORT / IMPORT ════════════════════ */
+function exportDay() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(S.day, null, 2)], { type: 'application/json' }));
+  a.download = `sps-monitor-${S.date}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 800);
+}
+
+function importDay() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json';
+  input.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!confirm(`Import ${(data.clips || []).length} clips / ${(data.stories || []).length} stories into ${S.date}?`)) return;
+      S.day = { ...freshDay(S.date), ...data, date: S.date };
+      persist(); renderMasthead(); renderAll();
+      toast('Day imported.');
+    } catch (err) { toast('Could not read that file.'); }
+  };
+  input.click();
+}
+
+/* ════════════════════ UI HELPERS ════════════════════ */
+function closeModal(id) { el(id).classList.add('hidden'); }
+document.addEventListener('click', e => { if (e.target.classList.contains('overlay')) e.target.classList.add('hidden'); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'));
+});
+
+function toast(msg, actionLabel, actionFn) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = `<span>${esc(msg)}</span>${actionLabel ? `<button>${esc(actionLabel)}</button>` : ''}`;
+  if (actionLabel) t.querySelector('button').onclick = () => { actionFn(); t.remove(); };
+  el('toasts').appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .4s'; setTimeout(() => t.remove(), 400); }, 5200);
+}
+
+/* ════════════════════ BOOT ════════════════════ */
+(async function boot() {
+  try { S.status = await api('/api/status'); } catch (e) { S.status = { apify: false, supabase: false }; }
+  el('btn-social').classList.toggle('hidden', !S.status.apify);
+  await loadLedger();
+  await openDay(localDate());
+})();
+</script>
+
+</body>
+</html>

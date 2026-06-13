@@ -6,3 +6,13 @@ dist/
 build/
 *.log
 .netlify
+.gstack/
+
+# local data, day archives & secrets
+data/
+
+# never publish the SPS source documents or sample reports
+*.pdf
+*.docx
+*.save
+Launch SPS Monitor.command
