@@ -201,13 +201,6 @@ button { font-family: inherit; }
 
 .content { padding: 40px 48px 88px; flex: 1; max-width: 1120px; width: 100%; }
 
-/* archive ribbon */
-.ribbon {
-  margin-bottom: 22px; padding: 11px 18px; font-size: 12.5px; border-radius: 16px;
-  border: 1px dashed rgba(168,128,31,.5); background: var(--gold-soft); color: #6b5413;
-  display: flex; justify-content: space-between; align-items: center; gap: 12px;
-}
-.ribbon b { font-family: var(--mono); letter-spacing: .5px; }
 
 /* fetch banner · double-bezel */
 .fetchline {
@@ -315,12 +308,12 @@ button { font-family: inherit; }
 
 /* ═══ CLIPS ═══ */
 .clip-row {
-  background: var(--card); border: 1px solid var(--line); border-radius: 18px; margin-bottom: 10px;
-  padding: 14px 18px; display: flex; gap: 16px; align-items: flex-start;
-  transition: transform .5s var(--ease), box-shadow .5s var(--ease);
-  animation: rise .8s var(--ease) both; box-shadow: 0 1px 2px rgba(20,24,33,.03);
+  background: none; border: none; border-radius: 0; margin: 0;
+  padding: 18px 0; display: flex; gap: 16px; align-items: flex-start;
+  border-bottom: 1px solid var(--line); box-shadow: none;
+  animation: rise .8s var(--ease) both;
 }
-.clip-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.clip-row:hover { transform: none; box-shadow: none; }
 .clip-date { font-family: var(--mono); font-size: 10.5px; color: var(--muted); width: 74px; flex-shrink: 0; padding-top: 3px; }
 .clip-thumb {
   width: 88px; height: 66px; flex-shrink: 0; border-radius: 12px;
@@ -355,15 +348,14 @@ button { font-family: inherit; }
 .sec-note { font-style: italic; font-size: 12.5px; color: var(--muted); margin: -4px 0 10px; }
 .sec-empty { color: var(--muted); font-size: 14px; padding: 0 0 6px; }
 .story-card {
-  background: var(--card); border: 1px solid var(--line); border-radius: 18px;
-  padding: 22px 26px; margin-bottom: 12px; animation: rise .8s var(--ease) both;
-  box-shadow: var(--shadow-soft);
-  transition: transform .5s var(--ease), box-shadow .5s var(--ease);
+  background: none; border: none; border-radius: 0; box-shadow: none;
+  padding: 22px 0; margin: 0; border-bottom: 1px solid var(--line);
+  animation: rise .8s var(--ease) both;
 }
-.story-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
-.story-hl { font-weight: 600; font-size: 19px; line-height: 1.28; letter-spacing: -.022em; color: var(--ink); }
-.story-sum { font-size: 14.5px; line-height: 1.55; margin: 8px 0 12px; color: var(--ink-2); }
-.story-meta { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 11px; }
+.story-card:hover { transform: none; box-shadow: none; }
+.story-hl { font-weight: 600; font-size: 21px; line-height: 1.26; letter-spacing: -.024em; color: var(--ink); }
+.story-sum { font-size: 15px; line-height: 1.55; margin: 9px 0 12px; color: var(--ink-2); }
+.story-meta { font-size: 13px; color: var(--muted); padding-top: 2px; }
 .story-meta div { margin-top: 3px; }
 .story-meta b { color: var(--ink-2); font-weight: 600; }
 
@@ -491,7 +483,6 @@ button { font-family: inherit; }
   </div>
 
   <div class="content">
-    <div id="ribbon" class="ribbon hidden"></div>
     <div id="fetchline" class="fetchline hidden"></div>
 
     <!-- STORIES -->
@@ -868,11 +859,6 @@ async function openDay(date, opts = {}) {
   renderAll();
 
   const today = localDate();
-  el('ribbon').classList.toggle('hidden', date === today);
-  if (date !== today) {
-    el('ribbon').innerHTML = `<span>📁 Viewing the archive for <b>${esc(prettyDate(date))}</b></span>
-      <button class="btn btn-sm" onclick="openDay('${today}')">Jump to today →</button>`;
-  }
 
   // Auto-fetch: only for today, only if never fetched (cached forever after)
   if (!opts.noFetch && date === today && !S.day.fetched_at && S.apiOk) doFetch(false, true);
