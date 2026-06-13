@@ -1032,16 +1032,20 @@ async function generateStories(silent) {
   // are excluded from re-clustering so they're never duplicated.
   const kept = S.day.stories.filter(s => !s.auto || s.edited);
   const keptIds = new Set(kept.flatMap(s => s.clipIds || []));
-  // Previous auto drafts — we reuse their LLM text (and any traction) by clip
-  // overlap so re-running is free, non-destructive, and never re-summarises.
-  const prevAuto = S.day.stories.filter(s => s.auto && !s.edited);
+  // Previous auto drafts with a REAL LLM summary — reused (with any traction) by
+  // clip overlap so re-running is free and non-destructive. Caption fallbacks
+  // (LLM was down/over-quota) are NOT reused, so they self-heal: the next run
+  // re-summarises them once the LLM is reachable again.
+  const norm = t => String(t || '').replace(/[^a-z0-9]/gi, '').slice(0, 40);
+  const isDraft = s => s.llm === false || (s.llm === undefined && norm(s.hl) === norm(s.summary));
+  const prevReal = S.day.stories.filter(s => s.auto && !s.edited && !isDraft(s));
 
   const pool = clips.filter(c => !keptIds.has(c.id));
   const clusters = clusterClips(pool);
 
   const matchPrev = group => {
     const ids = new Set(group.map(c => c.id));
-    return prevAuto.find(s => (s.clipIds || []).some(id => ids.has(id)));
+    return prevReal.find(s => (s.clipIds || []).some(id => ids.has(id)));
   };
   const fresh = clusters.filter(g => !matchPrev(g));
 
@@ -1071,6 +1075,7 @@ async function generateStories(silent) {
 
     const i = fresh.indexOf(group);
     const sum = byIdx[i];
+    const llm = !!(sum && sum.summary);   // false ⇒ caption fallback ⇒ retried next run
     const rep = group.slice().sort((a, b) => (b.subject || '').length - (a.subject || '').length)[0];
     const capt = (rep.subject || '').trim();
     const hl = (sum && sum.headline) ? sum.headline : (capt.length > 130 ? capt.slice(0, 130) + '…' : capt);
@@ -1087,7 +1092,7 @@ async function generateStories(silent) {
     else { cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : 'daily_news'; if (cat === 'social_updates') cat = 'daily_news'; }
 
     built.push({ id: 's' + Date.now().toString(36) + made, clipIds, cat, subOrg, hl,
-      summary, reported, syndicated: '', published,
+      summary, reported, syndicated: '', published, llm,
       // traction left blank — fill it in manually via Edit (tier + comment observations)
       trInt: '', trCom: '', trNote: '', auto: true });
     made++;
