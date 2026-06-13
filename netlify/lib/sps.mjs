@@ -8,9 +8,24 @@ const APIFY_TOKEN = () => Netlify.env.get('APIFY_TOKEN');
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 // ── Supabase REST helpers ────────────────────────────────────────────────
+// Strip lone UTF-16 surrogates (e.g. an emoji cut in half by a slice). Postgres
+// jsonb rejects \uXXXX lone-surrogate escapes with PGRST102 "invalid json", so we
+// clean every string value DURING serialization (a JSON replacer sees raw code
+// units before they're escaped — a post-stringify regex can't, they're text by then).
+const stripSurrogates = (v) =>
+  typeof v === 'string' ? v.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '') : v;
+// safe-serialize any value for a Supabase write
+export const sjson = (o) => JSON.stringify(o, (k, v) => stripSurrogates(v));
+
+// supa(path, opts) — pass opts.json (an object/array) for writes and it's
+// ALWAYS serialized safely; this is the single choke point so no write path can
+// re-introduce the lone-surrogate bug.
 async function supa(path, opts = {}) {
+  const { json, ...rest } = opts;
+  const body = json !== undefined ? sjson(json) : opts.body;
   const r = await fetch(SUPA_URL() + '/rest/v1/' + path, {
-    ...opts,
+    ...rest,
+    body,
     headers: {
       apikey: SUPA_KEY(), Authorization: 'Bearer ' + SUPA_KEY(),
       'Content-Type': 'application/json', ...(opts.headers || {}),
@@ -26,18 +41,11 @@ export async function getDay(date) {
   return rows && rows[0] ? rows[0].payload : null;
 }
 
-// Strip lone UTF-16 surrogates (e.g. an emoji cut in half by a slice). Postgres
-// jsonb rejects \uXXXX lone-surrogate escapes with PGRST102 "invalid json", so we
-// clean every string value DURING serialization (a JSON replacer sees raw code
-// units before they're escaped — a post-stringify regex can't, the escapes are text).
-const stripSurrogates = (v) =>
-  typeof v === 'string' ? v.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '') : v;
-
 export async function putDay(day) {
   await supa('monitor_days', {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify([{ date: day.date, payload: day, updated_at: new Date().toISOString() }], (k, v) => stripSurrogates(v)),
+    json: [{ date: day.date, payload: day, updated_at: new Date().toISOString() }],
   });
 }
 
@@ -64,7 +72,7 @@ export async function putWatchlist(cfg) {
   await supa('monitor_config', {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify([{ key: 'watchlist', value: cfg, updated_at: new Date().toISOString() }]),
+    json: [{ key: 'watchlist', value: cfg, updated_at: new Date().toISOString() }],
   });
 }
 
@@ -107,7 +115,7 @@ export async function putUsers(list) {
   await supa('monitor_config', {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify([{ key: 'users', value: list, updated_at: new Date().toISOString() }]),
+    json: [{ key: 'users', value: list, updated_at: new Date().toISOString() }],
   });
 }
 export async function findUser(email) {

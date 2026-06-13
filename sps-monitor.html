@@ -941,17 +941,21 @@ async function pollDay(date, field, baseline, timeoutMs = 240000) {
 
 let saveTimer = null;
 function persist() {
-  try { localStorage.setItem('sps-day-' + S.date, JSON.stringify(S.day)); } catch (e) {}
+  // Snapshot the day + date at call time. The debounced save must NOT read the
+  // live S.day/S.date later — if the user switched days in the meantime it would
+  // save the wrong day (this race once wiped a day's clips).
+  const day = S.day, dateKey = S.date;
+  try { localStorage.setItem('sps-day-' + dateKey, JSON.stringify(day)); } catch (e) {}
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
+    const m = el('mast-saved');
     try {
-      await api('/api/save', S.day);
-      el('mast-saved').textContent = '● saved ' + new Date().toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit' })
-        + (S.status?.supabase ? ' · ☁ cloud' : '');
-      el('mast-saved').className = 'ok';
+      await api('/api/save', day);
+      if (m) { m.textContent = '● saved ' + new Date().toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit' }) + (S.status?.supabase ? ' · ☁ cloud' : ''); m.className = 'ok'; }
     } catch (e) {
-      el('mast-saved').textContent = '● saved locally (launcher offline)';
-      el('mast-saved').className = '';
+      // Never fail silently — a masked cloud error is how a real save bug hid before.
+      if (m) { m.textContent = '● NOT saved to cloud'; m.className = ''; }
+      toast(`⚠ Couldn't save ${dateKey} to the cloud (${e.message}). Changes kept locally — try again shortly.`);
     }
     refreshLedgerCounts();
   }, 700);
@@ -1035,6 +1039,16 @@ async function openDay(date, opts = {}) {
   // (Apify displayUrl / og:image), but the UI reads `shot`. Mirror it so the
   // thumbnails render. (persist() then saves it under `shot` too.)
   (S.day.clips || []).forEach(c => { if (!c.shot && c.img) c.shot = c.img; });
+  // Integrity self-clean (editors only): drop phantom auto-stories whose clips no
+  // longer exist on this day — keeps "stories without clips" from ever lingering.
+  if (S.editor) {
+    const ids = new Set((S.day.clips || []).map(c => c.id));
+    const orphan = s => s.auto && !s.edited && (s.clipIds || []).length > 0 && !(s.clipIds || []).some(id => ids.has(id));
+    const noClips = !(S.day.clips || []).length;
+    const before = (S.day.stories || []).length;
+    S.day.stories = (S.day.stories || []).filter(s => !(orphan(s) || (noClips && s.auto && !s.edited)));
+    if ((S.day.stories || []).length !== before) persist();
+  }
   renderLedger();
   renderMasthead();
   renderAll();
