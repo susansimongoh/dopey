@@ -27,10 +27,14 @@ export async function getDay(date) {
 }
 
 export async function putDay(day) {
+  // Strip lone UTF-16 surrogates (e.g. an emoji cut in half by a slice) — they
+  // serialize to invalid UTF-8 and Supabase rejects the write with PGRST102.
+  const body = JSON.stringify([{ date: day.date, payload: day, updated_at: new Date().toISOString() }])
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
   await supa('monitor_days', {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify([{ date: day.date, payload: day, updated_at: new Date().toISOString() }]),
+    body,
   });
 }
 

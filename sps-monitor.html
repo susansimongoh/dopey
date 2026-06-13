@@ -1286,7 +1286,8 @@ async function generateStories(silent) {
     const llm = !!(sum && sum.summary);   // false ⇒ caption fallback ⇒ retried next run
     const rep = group.slice().sort((a, b) => (b.subject || '').length - (a.subject || '').length)[0];
     const capt = (rep.subject || '').trim();
-    const hl = (sum && sum.headline) ? sum.headline : (capt.length > 130 ? capt.slice(0, 130) + '…' : capt);
+    const cp = [...capt];   // code-point-safe so we never cut an emoji in half (lone surrogate)
+    const hl = (sum && sum.headline) ? sum.headline : (cp.length > 130 ? cp.slice(0, 130).join('') + '…' : capt);
     const summary = (sum && sum.summary) ? sum.summary : capt;
     if (!hl) return;
 
