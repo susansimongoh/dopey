@@ -672,12 +672,15 @@ const CAT_KEYS = ['issues', 'daily_news', 'yellow_ribbon', 'care_network', 'soci
 // Own official accounts → their posts go under "Social Media Updates" (split by org).
 const SPS_OWN = ['singaporeprisonservice'];
 const YRSG_OWN = ['yellowribbonsg', 'yellowribbonsingapore'];
+// CARE Network partner accounts → always file under CARE Network.
+const CARE_PARTNERS = ['prisonfellowshipsg', 'prisonfellowshipsingapore', 'singaporeantinarcotics', 'saca', 'iscos', 'neugen'];
 function ownOrg(handle) {
   const h = (handle || '').replace(/^@/, '').toLowerCase();
   if (SPS_OWN.includes(h)) return 'sps';
   if (YRSG_OWN.includes(h)) return 'yrsg';
   return null;
 }
+function isCarePartner(handle) { return CARE_PARTNERS.includes((handle || '').replace(/^@/, '').toLowerCase()); }
 // The report layout, always shown daily (with '-' when a section is empty).
 function sectionSpec() {
   const all = S.day.stories || [];
@@ -1028,6 +1031,7 @@ async function generateStories(silent) {
     let cat, subOrg = '';
     const org = group.map(c => ownOrg(c.kw)).find(Boolean);
     if (org) { cat = 'social_updates'; subOrg = org; }
+    else if (group.some(c => isCarePartner(c.kw))) { cat = 'care_network'; }
     else {
       cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : 'daily_news';
       if (cat === 'social_updates') cat = 'daily_news';
