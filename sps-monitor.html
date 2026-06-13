@@ -214,6 +214,29 @@ button { font-family: inherit; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ═══ OVERVIEW ═══ */
+.ov-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+.ov-stat { background: var(--card); border-radius: 18px; padding: 18px 20px; box-shadow: var(--shadow-soft); }
+.ov-num { font-size: 34px; font-weight: 800; letter-spacing: -.04em; line-height: 1; }
+.ov-lab { font-size: 11.5px; color: var(--muted); margin-top: 7px; font-weight: 500; }
+.ov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.ov-card { background: var(--card); border-radius: 18px; padding: 20px 22px; box-shadow: var(--shadow-soft); }
+.ov-card-h { font-size: 12.5px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: baseline; }
+.ov-hint { font-size: 11px; font-weight: 600; color: var(--verm); cursor: pointer; }
+.ov-hint:hover { text-decoration: underline; }
+.ov-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.ov-row:last-child { border-bottom: none; }
+.ov-row b { font-weight: 700; font-family: var(--mono); font-size: 12px; }
+.ov-clip { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.ov-clip:last-child { border-bottom: none; }
+.ov-clip .th { width: 46px; height: 34px; border-radius: 7px; background: var(--paper-2); flex-shrink: 0; overflow: hidden; display: grid; place-items: center; font-size: 13px; }
+.ov-clip .th img { width: 100%; height: 100%; object-fit: cover; }
+.ov-clip .meta { min-width: 0; flex: 1; }
+.ov-clip .meta .p { font-weight: 700; font-size: 12px; }
+.ov-clip .meta .s { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-muted { color: var(--muted); font-size: 12px; }
+@media (max-width: 1100px) { .ov-stats { grid-template-columns: repeat(2,1fr); } .ov-grid { grid-template-columns: 1fr; } }
+
 /* ═══ INBOX ═══ */
 .toolbar { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
 .chip {
@@ -416,7 +439,6 @@ button { font-family: inherit; }
   <div class="ledger">
     <div class="cal-dow"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
     <div class="cal-grid" id="cal-grid"></div>
-    <div class="cal-sel" id="cal-sel"></div>
   </div>
   <div class="rail-foot">
     <button class="rail-btn" onclick="openKeywords()">⌕ Search keywords</button>
@@ -445,7 +467,7 @@ button { font-family: inherit; }
       </div>
     </div>
     <div class="tabs">
-      <button class="tab active" data-tab="inbox" onclick="setTab('inbox')">Inbox <span class="badge" id="b-inbox">0</span></button>
+      <button class="tab active" data-tab="overview" onclick="setTab('overview')">Overview</button>
       <button class="tab" data-tab="clips" onclick="setTab('clips')">Clips <span class="badge" id="b-clips">0</span></button>
       <button class="tab" data-tab="stories" onclick="setTab('stories')">Stories <span class="badge" id="b-stories">0</span></button>
       <button class="tab" data-tab="report" onclick="setTab('report')">Report</button>
@@ -456,20 +478,31 @@ button { font-family: inherit; }
     <div id="ribbon" class="ribbon hidden"></div>
     <div id="fetchline" class="fetchline hidden"></div>
 
-    <!-- INBOX -->
-    <section id="tab-inbox">
-      <div class="toolbar">
-        <button class="chip active" data-f="new" onclick="setInboxFilter('new',this)">New</button>
-        <button class="chip" data-f="accepted" onclick="setInboxFilter('accepted',this)">Accepted</button>
-        <button class="chip" data-f="dismissed" onclick="setInboxFilter('dismissed',this)">Dismissed</button>
-        <button class="chip" data-f="all" onclick="setInboxFilter('all',this)">All</button>
-        <span class="spacer"></span>
-        <input class="search" id="inbox-search" placeholder="filter…" oninput="renderInbox()">
+    <!-- OVERVIEW -->
+    <section id="tab-overview">
+      <div class="ov-stats">
+        <div class="ov-stat"><div class="ov-num" id="ov-clips">0</div><div class="ov-lab">clips collected</div></div>
+        <div class="ov-stat"><div class="ov-num" id="ov-stories">0</div><div class="ov-lab">stories written</div></div>
+        <div class="ov-stat"><div class="ov-num" id="ov-high">0</div><div class="ov-lab">high traction</div></div>
+        <div class="ov-stat"><div class="ov-num" id="ov-pending">0</div><div class="ov-lab">clips not yet in a story</div></div>
       </div>
-      <div id="inbox-list"></div>
-      <div id="inbox-empty" class="empty hidden">
-        <div class="big">Nothing on the wire.</div>
-        <p id="inbox-empty-sub">Hit <b>⚡ Fetch mentions</b> to pull today's coverage.</p>
+      <div class="ov-grid">
+        <div class="ov-card">
+          <div class="ov-card-h">Clips by category</div>
+          <div id="ov-cats"></div>
+        </div>
+        <div class="ov-card">
+          <div class="ov-card-h">Stories <span class="ov-hint" onclick="setTab('stories')">manage →</span></div>
+          <div id="ov-stories-list"></div>
+        </div>
+      </div>
+      <div class="ov-card">
+        <div class="ov-card-h">Latest clips <span class="ov-hint" onclick="setTab('clips')">see all →</span></div>
+        <div id="ov-latest"></div>
+      </div>
+      <div id="overview-empty" class="empty hidden">
+        <div class="big">Nothing collected yet.</div>
+        <p>Hit <b>⚡ Fetch news</b> or <b>🛰 Re-sweep socials</b> to gather today's coverage.</p>
       </div>
     </section>
 
@@ -484,7 +517,7 @@ button { font-family: inherit; }
       <div id="clips-list"></div>
       <div id="clips-empty" class="empty hidden">
         <div class="big">No clips logged.</div>
-        <p>Accept items from the Inbox, or add one manually.</p>
+        <p>Fetch news or sweep socials to collect clips, or add one manually.</p>
       </div>
     </section>
 
@@ -664,8 +697,7 @@ const S = {
   date: null,            // currently open day (YYYY-MM-DD)
   day: null,             // full day object
   days: [],              // ledger entries
-  tab: 'inbox',
-  inboxFilter: 'new',
+  tab: 'overview',
   keywords: null,
   apiOk: true,
   editClipId: null, editStoryId: null,
@@ -776,30 +808,20 @@ function renderLedger() {
     const ds = `${y}-${pad2(m + 1)}-${pad2(d)}`;
     const entry = byDate[ds];
     const future = ds > today;
+    const hasData = entry && ((entry.clips || 0) || (entry.stories || 0) || entry.fetched_at);
     const cls = ['cal-cell'];
     if (future) cls.push('future');
-    if (entry) cls.push('has-data');
+    if (hasData) cls.push('has-data');
     if (ds === today) cls.push('today');
     if (ds === S.date) cls.push('selected');
-    const dot = entry ? `<span class="cal-dot ${entry.inbox_new ? 'new' : ''}"></span>` : '';
+    // red dot = clips collected but no story written yet (needs a writeup)
+    const pending = entry && (entry.clips || 0) > 0 && (entry.stories || 0) === 0;
+    const dot = hasData ? `<span class="cal-dot ${pending ? 'new' : ''}"></span>` : '';
     const onclick = future ? '' : ` onclick="openDay('${ds}')"`;
     cells += `<button class="${cls.join(' ')}"${onclick}>${d}${dot}</button>`;
   }
   el('cal-grid').innerHTML = cells;
 
-  // selected-day summary card
-  const sel = byDate[S.date];
-  if (sel) {
-    const dt = new Date(S.date + 'T12:00:00');
-    const label = S.date === today ? 'Today' : dt.toLocaleDateString('en-SG', { weekday: 'long' });
-    el('cal-sel').innerHTML = `
-      <div class="d-date">${dt.toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}</div>
-      <div class="d-label"><span class="dot ${sel.fetched_at ? 'fetched' : 'pending'}"></span>${label}
-        ${sel.inbox_new ? `<span class="pill-new">${sel.inbox_new} new</span>` : ''}</div>
-      <div class="d-counts"><span><b>${sel.clips}</b> clips</span><span><b>${sel.stories}</b> stories</span></div>`;
-  } else {
-    el('cal-sel').innerHTML = '';
-  }
 }
 
 async function refreshLedgerCounts() {
@@ -870,6 +892,7 @@ async function doFetch(force, auto) {
   el('btn-fetch').disabled = true;
   try {
     const baseline = S.day.fetched_at || null;
+    const clipCount = (S.day.clips || []).length;
     const res = await api('/api/fetch', { date: S.date, force: !!force });
     if (res.__accepted) {                      // cloud background job → poll
       S.day = await pollDay(S.date, 'fetched_at', baseline);
@@ -877,9 +900,9 @@ async function doFetch(force, auto) {
       if (!res.ok) throw new Error(res.error);
       S.day = res.day;
     }
-    const fresh = S.day.inbox.filter(i => i.status === 'new').length;
-    renderMasthead(); renderAll(); refreshLedgerCounts();
-    fl.innerHTML = `<span>✅ <b>Fetch complete</b> — ${S.day.inbox.length} items on the wire, <b>${fresh} awaiting triage</b>.${(S.day.fetch_errors || []).length ? ' <span style="color:var(--verm)">(' + S.day.fetch_errors.length + ' source errors)</span>' : ''}</span>
+    const before = clipCount; const added = (S.day.clips || []).length - before;
+    renderMasthead(); renderAll(); refreshLedgerCounts(); snapMissing();
+    fl.innerHTML = `<span>✅ <b>Fetch complete</b> — <b>${added} new clip${added === 1 ? '' : 's'}</b> collected (${(S.day.clips || []).length} total).${(S.day.fetch_errors || []).length ? ' <span style="color:var(--verm)">(' + S.day.fetch_errors.length + ' source errors)</span>' : ''}</span>
       <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
     setTimeout(() => fl.classList.add('hidden'), 6000);
   } catch (e) {
@@ -901,6 +924,7 @@ async function doSocialFetch(force) {
   el('btn-social').disabled = true;
   try {
     const baseline = S.day.social_fetched_at || null;
+    const clipCount = (S.day.clips || []).length;
     const res = await api('/api/fetch-social', { date: S.date, force: !!force });
     if (res.__accepted) {                       // cloud background job → poll (slow: many accounts)
       S.day = await pollDay(S.date, 'social_fetched_at', baseline, 780000);
@@ -908,10 +932,10 @@ async function doSocialFetch(force) {
       if (!res.ok) throw new Error(res.error);
       S.day = res.day;
     }
-    const fresh = S.day.inbox.filter(i => i.status === 'new').length;
-    renderMasthead(); renderAll(); refreshLedgerCounts();
+    const added = (S.day.clips || []).length - clipCount;
+    renderMasthead(); renderAll(); refreshLedgerCounts(); snapMissing();
     const errs = (S.day.social_errors || []);
-    fl.innerHTML = `<span>✅ <b>Social sweep complete</b> — ${S.day.inbox.length} items on the wire, <b>${fresh} awaiting triage</b>.${errs.length ? ' <span style="color:var(--verm)">(' + esc(errs.join(' · ')) + ')</span>' : ''}</span>
+    fl.innerHTML = `<span>✅ <b>Social sweep complete</b> — <b>${added} new clip${added === 1 ? '' : 's'}</b> collected (${(S.day.clips || []).length} total).${errs.length ? ' <span style="color:var(--verm)">(' + esc(errs.join(' · ')) + ')</span>' : ''}</span>
       <span class="spacer"></span><button class="btn btn-sm btn-ghost" onclick="el('fetchline').classList.add('hidden')">✕</button>`;
     if (!errs.length) setTimeout(() => fl.classList.add('hidden'), 7000);
   } catch (e) {
@@ -925,113 +949,52 @@ async function doSocialFetch(force) {
 function setTab(t) {
   S.tab = t;
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
-  ['inbox', 'clips', 'stories', 'report'].forEach(x => el('tab-' + x).classList.toggle('hidden', x !== t));
+  ['overview', 'clips', 'stories', 'report'].forEach(x => el('tab-' + x).classList.toggle('hidden', x !== t));
+  if (t === 'overview') renderOverview();
   if (t === 'report') { fillCfgInputs(); renderReport(); }
 }
 
 function badges() {
-  el('b-inbox').textContent = (S.day.inbox || []).filter(i => i.status === 'new').length;
   el('b-clips').textContent = (S.day.clips || []).length;
   el('b-stories').textContent = (S.day.stories || []).length;
 }
 
-function renderAll() { renderInbox(); renderClips(); renderStories(); badges(); if (S.tab === 'report') { fillCfgInputs(); renderReport(); } }
+function renderAll() { renderOverview(); renderClips(); renderStories(); badges(); if (S.tab === 'report') { fillCfgInputs(); renderReport(); } }
 
-/* ════════════════════ INBOX ════════════════════ */
-function setInboxFilter(f, btn) {
-  S.inboxFilter = f;
-  document.querySelectorAll('[data-f]').forEach(b => b.classList.toggle('active', b === btn));
-  renderInbox();
-}
+/* ════════════════════ OVERVIEW (summary of clips + stories) ════════════════════ */
+function isHigh(c) { return c.traction === 'high' || c.traction === 'very_high'; }
 
-function timeAgo(iso) {
-  const m = Math.round((Date.now() - new Date(iso)) / 60000);
-  if (m < 60) return m + 'm ago';
-  if (m < 1440) return Math.round(m / 60) + 'h ago';
-  return Math.round(m / 1440) + 'd ago';
-}
+function renderOverview() {
+  const clips = S.day.clips || [], stories = S.day.stories || [];
+  el('overview-empty').classList.toggle('hidden', clips.length > 0 || stories.length > 0);
 
-function renderInbox() {
-  const q = (el('inbox-search').value || '').toLowerCase();
-  let items = S.day.inbox || [];
-  if (S.inboxFilter !== 'all') items = items.filter(i => i.status === S.inboxFilter);
-  if (q) items = items.filter(i => (i.title + i.pub + i.kw).toLowerCase().includes(q));
+  el('ov-clips').textContent = clips.length;
+  el('ov-stories').textContent = stories.length;
+  el('ov-high').textContent = clips.filter(isHigh).length;
+  // clips whose category has no story yet = still needing a writeup
+  const storyCats = new Set(stories.map(s => s.cat));
+  el('ov-pending').textContent = clips.filter(c => !storyCats.has(c.cat)).length;
 
-  el('inbox-empty').classList.toggle('hidden', items.length > 0);
-  el('inbox-empty-sub').innerHTML = (S.day.inbox || []).length
-    ? 'No items match this filter.'
-    : (S.day.fetched_at ? 'Fetched, but nothing matched your keywords in the look-back window.' : 'Hit <b>⚡ Fetch mentions</b> to pull today\'s coverage.');
+  // clips by category
+  const cats = {};
+  clips.forEach(c => { cats[c.cat] = (cats[c.cat] || 0) + 1; });
+  el('ov-cats').innerHTML = Object.keys(cats).length
+    ? Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([cat, n]) =>
+        `<div class="ov-row"><span class="cat-tag cat-${esc(cat)}">${(CATS[cat] || cat).split(' &')[0].split(' and ')[0]}</span><b>${n}</b></div>`).join('')
+    : '<div class="ov-muted">No clips yet.</div>';
 
-  el('inbox-list').innerHTML = items.map((it, idx) => {
-    let eng = '';
-    if (it.eng) {
-      const e = it.eng, parts = [];
-      if (e.plays) parts.push('▶ ' + fmtN(e.plays));
-      if (e.likes) parts.push('♥ ' + fmtN(e.likes));
-      if (e.comments) parts.push('💬 ' + fmtN(e.comments));
-      if (e.shares) parts.push('↗ ' + fmtN(e.shares));
-      if (e.score) parts.push('▲ ' + fmtN(e.score));
-      eng = parts.length ? `<span class="eng">${parts.join(' · ')}</span>` : '';
-    }
-    const trc = it.traction ? `<span class="tr-chip tr-${it.traction}">${it.traction.replace('_', ' ')}</span>` : '';
-    const srcCls = SRC_CLS[it.src] || 'src-google';
-    return `<div class="inbox-item is-${it.status}" style="animation-delay:${Math.min(idx * 28, 280)}ms">
-      <div class="ib-time">${timeAgo(it.published)}<br>${new Date(it.published).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit' })}</div>
-      <div class="ib-body">
-        <div class="ib-srcline"><span class="src-tag ${srcCls}">${esc(it.src)}</span><span class="kw-tag">${esc(it.kw)}</span>${trc}</div>
-        <div class="ib-title"><a href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a></div>
-        <div class="ib-meta"><span>${esc(it.pub)}${it.plat ? ' · ' + esc(it.plat) : ''}</span>${eng}</div>
-      </div>
-      <div class="ib-actions">
-        ${it.status === 'new' ? `
-          <select onchange="this.dataset.v=this.value" data-v="${esc(it.cat)}" id="cat-${it.id}">
-            ${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${k === it.cat ? 'selected' : ''}>${v.split(' &')[0].split(' and ')[0]}</option>`).join('')}
-          </select>
-          <button class="btn btn-sm btn-ink" onclick="acceptItem('${it.id}')">✓ Accept</button>
-          <button class="btn btn-sm btn-ghost" onclick="dismissItem('${it.id}')">✕ Dismiss</button>`
-        : it.status === 'accepted'
-          ? `<span class="src-tag" style="background:var(--teal-soft);color:var(--teal)">✓ CLIPPED</span>`
-          : `<button class="btn btn-sm btn-ghost" onclick="restoreItem('${it.id}')">↩ Restore</button>`}
-      </div>
-    </div>`;
-  }).join('');
-}
+  // stories
+  el('ov-stories-list').innerHTML = stories.length
+    ? stories.map(s => `<div class="ov-row" style="cursor:pointer" onclick="setTab('stories')"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.hl)}</span><span class="cat-tag cat-${esc(s.cat)}" style="flex-shrink:0;margin-left:8px">${(CATS[s.cat] || s.cat).split(' &')[0].split(' and ')[0]}</span></div>`).join('')
+    : '<div class="ov-muted">No stories written yet. Group clips into stories for the report.</div>';
 
-function findInbox(id) { return (S.day.inbox || []).find(i => i.id === id); }
-
-function acceptItem(id) {
-  const it = findInbox(id);
-  if (!it) return;
-  const catSel = el('cat-' + id);
-  const cat = catSel ? catSel.value : it.cat;
-  it.status = 'accepted';
-  const clipId = 'c' + Date.now();
-  S.day.clips.push({
-    id: clipId, date: localDate(new Date(it.published)),
-    pub: it.pub, plat: it.plat || (it.src === 'Reddit' ? 'Reddit' : ''),
-    subject: it.title, link: it.link, cat, fromInbox: it.id,
-    shot: it.img || null,     // socials carry a hero image URL from the sweep
-  });
-  persist(); renderInbox(); renderClips(); badges();
-  if (!it.img) snapClip(clipId, true);   // otherwise capture one (news og:image / Chrome)
-  toast(`Clipped “${it.title.slice(0, 48)}…”`, 'Undo', () => {
-    it.status = 'new';
-    S.day.clips = S.day.clips.filter(c => c.fromInbox !== it.id);
-    persist(); renderAll();
-  });
-}
-
-function dismissItem(id) {
-  const it = findInbox(id);
-  if (!it) return;
-  it.status = 'dismissed';
-  persist(); renderInbox(); badges();
-  toast('Dismissed.', 'Undo', () => { it.status = 'new'; persist(); renderAll(); });
-}
-
-function restoreItem(id) {
-  const it = findInbox(id);
-  if (it) { it.status = 'new'; persist(); renderAll(); }
+  // latest clips
+  el('ov-latest').innerHTML = clips.length
+    ? clips.slice(0, 6).map(c => `<div class="ov-clip">
+        <div class="th">${c.shot ? `<img src="${esc(shotSrc(c))}" referrerpolicy="no-referrer" onerror="this.parentNode.textContent='📰'">` : '📰'}</div>
+        <div class="meta"><div class="p">${esc(c.pub)}${c.plat ? ' · ' + esc(c.plat) : ''} ${isHigh(c) ? '<span class="tr-chip tr-high">' + c.traction.replace('_', ' ') + '</span>' : ''}</div>
+        <div class="s">${esc(c.subject || '')}</div></div></div>`).join('')
+    : '<div class="ov-muted">No clips yet.</div>';
 }
 
 /* ════════════════════ CLIPS ════════════════════ */
@@ -1071,13 +1034,23 @@ async function snapClip(id, silent) {
     c.shot = res.shot;
     c.shotAt = Date.now();
     persist();
-    renderClips();
+    renderClips(); if (S.tab === 'overview') renderOverview();
     if (!silent) toast('Hero shot captured.');
     return true;
   } catch (e) {
     renderClips();
     if (!silent) toast('Snap failed: ' + e.message);
     return false;
+  }
+}
+
+// Quietly capture hero shots for any clips missing one (after a fetch).
+// One at a time so we don't hammer Chrome / og:image fetches.
+async function snapMissing() {
+  const missing = (S.day.clips || []).filter(c => !c.shot && c.link && !c._snapTried);
+  for (const c of missing) {
+    c._snapTried = true;
+    await snapClip(c.id, true);
   }
 }
 
@@ -1127,10 +1100,11 @@ function saveClip() {
 }
 
 function delClip(id) {
-  const c = S.day.clips.find(x => x.id === id);
   if (!confirm('Delete this clip?')) return;
   S.day.clips = S.day.clips.filter(x => x.id !== id);
-  if (c && c.fromInbox) { const it = findInbox(c.fromInbox); if (it) it.status = 'new'; }
+  // remember it so a re-fetch doesn't bring it back
+  S.day.dismissed = S.day.dismissed || [];
+  if (!S.day.dismissed.includes(id)) S.day.dismissed.push(id);
   persist(); renderAll();
 }
 

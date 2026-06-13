@@ -429,48 +429,38 @@ def is_relevant(text, terms):
     return any(t in low for t in terms)
 
 
-def filter_inbox(day, cfg):
-    """The inbox shows ONLY items that are (a) from a configured keyword/account
-    AND (b) topically about SPS. Items already triaged are kept for the record."""
+def item_to_clip(it):
+    """Convert a fetched item into a clip (the evidence-log shape)."""
+    return {
+        'id': it['id'], 'date': (it.get('published') or '')[:10] or None,
+        'pub': it.get('pub'), 'plat': it.get('plat') or ('Reddit' if it.get('src') == 'Reddit' else ''),
+        'subject': it.get('title'), 'link': it.get('link'), 'cat': it.get('cat', 'daily_news'),
+        'src': it.get('src'), 'kw': it.get('kw'), 'eng': it.get('eng'),
+        'traction': it.get('traction'), 'shot': it.get('img'), 'published': it.get('published'),
+    }
+
+
+def merge_clips(day, results, cfg):
+    """Merge fetched results straight into day['clips']: keep only on-watchlist,
+    SPS-relevant items; skip ones already clipped or previously deleted."""
     valid = {kw['q'] for kw in cfg.get('keywords', [])}
     for handles in cfg.get('accounts', {}).values():
         valid.update('@' + h for h in handles)
     terms = sps_topic_terms(cfg)
-    kept = []
-    for it in day.get('inbox', []):
-        if it.get('status') != 'new':
-            kept.append(it); continue
+    day.setdefault('clips', [])
+    day.setdefault('dismissed', [])
+    have = {c.get('id') for c in day['clips']}
+    gone = set(day['dismissed'])
+    for it in results:
+        if it['id'] in have or it['id'] in gone:
+            continue
         if it.get('kw') not in valid:
-            continue                              # off-watchlist source
-        # every new item must read as SPS-relevant in its title — keeps the
-        # inbox clean of account chatter and loose search mismatches
+            continue
         if not is_relevant(it.get('title', ''), terms):
             continue
-        kept.append(it)
-    day['inbox'] = kept
-
-
-def merge_inbox(day, results):
-    """Merge fetched items into the day's inbox, preserving triage statuses."""
-    existing = {it['id']: it for it in day.get('inbox', [])}
-    clip_links = {c.get('link') for c in day.get('clips', [])}
-    seen = set()
-    merged = []
-    for it in results:
-        if it['id'] in seen:
-            continue
-        seen.add(it['id'])
-        if it['link'] in clip_links:
-            continue
-        old = existing.get(it['id'])
-        if old:
-            it['status'] = old.get('status', 'new')
-        merged.append(it)
-    for old_id, old in existing.items():
-        if old_id not in seen:
-            merged.append(old)
-    merged.sort(key=lambda x: x.get('published', ''), reverse=True)
-    day['inbox'] = merged
+        have.add(it['id'])
+        day['clips'].append(item_to_clip(it))
+    day['clips'].sort(key=lambda c: (c.get('published') or c.get('date') or ''), reverse=True)
 
 
 def run_social_fetch(date, force=False):
@@ -501,8 +491,7 @@ def run_social_fetch(date, force=False):
         except Exception as e:
             errors.append(f'{name}: {str(e)[:100]}')
 
-    merge_inbox(day, results)
-    filter_inbox(day, cfg)
+    merge_clips(day, results, cfg)
     day['social_fetched_at'] = datetime.now().astimezone().isoformat()
     day['social_errors'] = errors
     save_day(day)
@@ -512,7 +501,7 @@ def run_social_fetch(date, force=False):
 def freshest_day(date):
     return {'date': date, 'fetched_at': None, 'social_fetched_at': None,
             'cfg': {'num': '', 'date': '', 'highlights': '1. XXX', 'issues': '1. XXX', 'fyi': '1. XXX'},
-            'inbox': [], 'clips': [], 'stories': []}
+            'clips': [], 'stories': [], 'dismissed': []}
 
 
 def run_fetch(date, force=False):
@@ -557,8 +546,7 @@ def run_fetch(date, force=False):
         unique.append(it)
     results = unique
 
-    merge_inbox(day, results)
-    filter_inbox(day, cfg)
+    merge_clips(day, results, cfg)
     day['fetched_at'] = datetime.now().astimezone().isoformat()
     day['fetch_errors'] = errors
     save_day(day)
@@ -648,8 +636,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         'date': d.get('date', f[:-5]),
                         'clips': len(d.get('clips', [])),
                         'stories': len(d.get('stories', [])),
-                        'inbox_new': sum(1 for i in d.get('inbox', []) if i.get('status') == 'new'),
-                        'fetched_at': d.get('fetched_at')
+                        'fetched_at': d.get('fetched_at'),
+                        'social_fetched_at': d.get('social_fetched_at')
                     })
                 except Exception:
                     pass

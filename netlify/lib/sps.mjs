@@ -42,7 +42,6 @@ export async function listDays() {
       date: r.date,
       clips: (d.clips || []).length,
       stories: (d.stories || []).length,
-      inbox_new: (d.inbox || []).filter((i) => i.status === 'new').length,
       fetched_at: d.fetched_at || null,
       social_fetched_at: d.social_fetched_at || null,
     };
@@ -66,7 +65,7 @@ export function freshDay(date) {
   return {
     date, fetched_at: null, social_fetched_at: null,
     cfg: { num: '', date: '', highlights: '1. XXX', issues: '1. XXX', fyi: '1. XXX' },
-    inbox: [], clips: [], stories: [],
+    clips: [], stories: [], dismissed: [],
   };
 }
 
@@ -108,32 +107,35 @@ function topicTerms(cfg) {
 }
 const relevant = (text, terms) => { const low = (text || '').toLowerCase(); for (const t of terms) if (low.includes(t)) return true; return false; };
 
-export function filterInbox(day, cfg) {
+// Convert a fetched item to a clip (the evidence-log shape used everywhere).
+function itemToClip(it) {
+  return {
+    id: it.id, date: (it.published || '').slice(0, 10) || null,
+    pub: it.pub, plat: it.plat || (it.src === 'Reddit' ? 'Reddit' : ''),
+    subject: it.title, link: it.link, cat: it.cat || 'daily_news',
+    src: it.src, kw: it.kw, eng: it.eng || null, traction: it.traction || null,
+    shot: it.img || null, published: it.published || null,
+  };
+}
+
+// Merge fetched results straight into day.clips: keep only on-watchlist,
+// SPS-relevant items; skip ones already clipped or previously deleted.
+export function mergeClips(day, results, cfg) {
   const valid = new Set((cfg.keywords || []).map((k) => k.q));
   for (const hs of Object.values(cfg.accounts || {})) for (const h of hs) valid.add('@' + h);
   const terms = topicTerms(cfg);
-  day.inbox = (day.inbox || []).filter((it) => {
-    if (it.status !== 'new') return true;
-    if (!valid.has(it.kw)) return false;
-    return relevant(it.title, terms);
-  });
-}
-
-export function mergeInbox(day, results) {
-  const existing = Object.fromEntries((day.inbox || []).map((i) => [i.id, i]));
-  const clipLinks = new Set((day.clips || []).map((c) => c.link));
-  const seen = new Set();
-  const merged = [];
+  day.clips = day.clips || [];
+  day.dismissed = day.dismissed || [];
+  const have = new Set(day.clips.map((c) => c.id));
+  const gone = new Set(day.dismissed);
   for (const it of results) {
-    if (seen.has(it.id)) continue;
-    seen.add(it.id);
-    if (clipLinks.has(it.link)) continue;
-    if (existing[it.id]) it.status = existing[it.id].status || 'new';
-    merged.push(it);
+    if (have.has(it.id) || gone.has(it.id)) continue;
+    if (!valid.has(it.kw)) continue;
+    if (!relevant(it.title, terms)) continue;
+    have.add(it.id);
+    day.clips.push(itemToClip(it));
   }
-  for (const [id, old] of Object.entries(existing)) if (!seen.has(id)) merged.push(old);
-  merged.sort((a, b) => (b.published || '').localeCompare(a.published || ''));
-  day.inbox = merged;
+  day.clips.sort((a, b) => (b.published || b.date || '').localeCompare(a.published || a.date || ''));
 }
 
 // ── news / reddit / youtube fetchers ─────────────────────────────────────
@@ -242,8 +244,7 @@ export async function runNewsFetch(date) {
   for (const it of results) { const k = it.title.toLowerCase().replace(/\W+/g, '').slice(0, 80); if (k && seenT.has(k)) continue; seenT.add(k); uniq.push(it); }
   // re-read latest day in case a social sweep wrote concurrently
   day = (await getDay(date)) || day;
-  mergeInbox(day, uniq);
-  filterInbox(day, cfg);
+  mergeClips(day, uniq, cfg);
   day.fetched_at = new Date().toISOString();
   day.fetch_errors = errors;
   await putDay(day);
@@ -341,8 +342,7 @@ export async function runSocialFetch(date) {
     catch (e) { errors.push(`${name}: ${String(e).slice(0, 90)}`); }
   }
   day = (await getDay(date)) || day;
-  mergeInbox(day, results);
-  filterInbox(day, cfg);
+  mergeClips(day, results, cfg);
   day.social_fetched_at = new Date().toISOString();
   day.social_errors = errors;
   await putDay(day);
