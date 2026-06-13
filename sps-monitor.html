@@ -6,7 +6,8 @@
 <title>SPS Media Monitor · Intel Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- SF substitute for non-Apple devices; on macOS/iOS the native -apple-system (San Francisco) wins -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -19,10 +20,10 @@
   --muted: #86868b;
   --line: rgba(0,0,0,.06);
   --line-2: rgba(0,0,0,.12);
-  --verm: #1763d6;          /* brand blue (kept the var name for reuse) */
-  --verm-deep: #0f4aa8;     /* dark blue */
-  --verm-soft: #e4eefb;     /* light blue */
-  --blue-mid: #cfe0fa;      /* selected-day blue */
+  --verm: #0071e3;          /* Apple system blue (kept the var name for reuse) */
+  --verm-deep: #0058b9;     /* darker blue */
+  --verm-soft: #e8f1fd;     /* light blue */
+  --blue-mid: #cfe2fb;      /* selected-day blue */
   --alert: #d8762a;         /* amber: writeup-pending status */
   --gold: #a87d18;
   --gold-soft: #f7efd7;
@@ -32,12 +33,12 @@
   --rail: #eeeef2;
   --rail-2: rgba(0,0,0,.045);
   --rail-line: rgba(0,0,0,.07);
-  --serif: 'Plus Jakarta Sans', -apple-system, sans-serif;
-  --sans: 'Plus Jakarta Sans', -apple-system, sans-serif;
-  --mono: 'Spline Sans Mono', ui-monospace, monospace;
+  --serif: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Helvetica Neue', sans-serif;
+  --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', 'Helvetica Neue', sans-serif;
+  --mono: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, monospace;
   --ease: cubic-bezier(.32,.72,0,1);
-  --shadow-soft: 0 1px 1px rgba(0,0,0,.02), 0 10px 30px -12px rgba(0,0,0,.08);
-  --shadow-lift: 0 2px 4px rgba(0,0,0,.03), 0 20px 48px -16px rgba(0,0,0,.13);
+  --shadow-soft: 0 1px 2px rgba(0,0,0,.04), 0 6px 18px -10px rgba(0,0,0,.07);
+  --shadow-lift: 0 2px 6px rgba(0,0,0,.05), 0 18px 40px -16px rgba(0,0,0,.14);
   --bezel: 0 0 0 1px rgba(0,0,0,.05), 0 0 0 7px rgba(0,0,0,.015), 0 0 0 8px rgba(0,0,0,.03), 0 20px 44px -20px rgba(0,0,0,.1);
 }
 
@@ -71,7 +72,7 @@ button { font-family: inherit; }
   background: linear-gradient(180deg, transparent, rgba(0,0,0,.08) 25%, rgba(0,0,0,.08) 75%, transparent); }
 .rail-brand { padding: 28px 22px 20px; }
 .rail-brand .agency { font-family: var(--mono); font-size: 8.5px; letter-spacing: 2.6px; text-transform: uppercase; color: var(--muted); }
-.rail-brand h1 { font-weight: 800; font-size: 23px; letter-spacing: -.6px; line-height: 1.12; margin-top: 6px; }
+.rail-brand h1 { font-weight: 700; font-size: 23px; letter-spacing: -.5px; line-height: 1.12; margin-top: 6px; }
 .rail-brand h1 em { font-style: normal; color: var(--verm); }
 .rail-brand .client {
   display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
@@ -153,7 +154,7 @@ button { font-family: inherit; }
 }
 .mast-kicker::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--verm); animation: pulse 2.4s var(--ease) infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .3; transform: scale(.85); } }
-.mast-title { font-weight: 800; font-size: clamp(32px, 4vw, 48px); letter-spacing: -.03em; line-height: 1.02; margin: 8px 0 6px; }
+.mast-title { font-weight: 700; font-size: clamp(32px, 4vw, 48px); letter-spacing: -.025em; line-height: 1.04; margin: 8px 0 6px; }
 .mast-meta { font-size: 12.5px; color: var(--muted); display: flex; gap: 18px; flex-wrap: wrap; padding-bottom: 5px; font-weight: 500; }
 .mast-meta .ok { color: var(--teal); }
 .mast-actions { display: flex; gap: 8px; align-items: center; padding-bottom: 8px; flex-wrap: wrap; }
@@ -168,7 +169,7 @@ button { font-family: inherit; }
 .btn:active { transform: scale(.96); }
 .btn-ink { background: var(--ink); color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.18); }
 .btn-ink:hover { background: #000; }
-.btn-verm { background: var(--verm); color: #fff; box-shadow: 0 1px 2px rgba(168,45,18,.3); }
+.btn-verm { background: var(--verm); color: #fff; box-shadow: 0 1px 2px rgba(0,113,227,.3); }
 .btn-verm:hover { background: var(--verm-deep); }
 .btn-sm { padding: 5px 13px; font-size: 12px; }
 .btn-ghost { background: transparent; }
@@ -345,23 +346,23 @@ button { font-family: inherit; }
 .cat-fyi { background: var(--paper-2); color: var(--muted); }
 
 /* ═══ STORIES ═══ */
-.sec-head { font-weight: 800; font-size: 20px; letter-spacing: -.03em; margin: 26px 0 6px; color: var(--ink); }
+.sec-head { font-weight: 700; font-size: 26px; letter-spacing: -.022em; margin: 34px 0 4px; color: var(--ink); }
 .sec-head.sec-top { margin-top: 6px; }
-.sec-label { font-weight: 700; font-size: 13px; letter-spacing: .02em; text-transform: uppercase; color: var(--verm-deep); margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1.5px solid var(--line); }
-.sec-label.sub { margin-left: 2px; color: var(--ink-2); }
+.sec-label { font-weight: 600; font-size: 18px; letter-spacing: -.018em; color: var(--ink); margin: 26px 0 12px; }
+.sec-label.sub { margin: 18px 0 10px; font-size: 15px; font-weight: 600; color: var(--ink-2); }
 .sec-note { font-style: italic; font-size: 12.5px; color: var(--muted); margin: -4px 0 10px; }
-.sec-empty { color: var(--muted); font-size: 13px; padding: 2px 0 8px; }
+.sec-empty { color: var(--muted); font-size: 14px; padding: 0 0 6px; }
 .story-card {
-  background: var(--card); border: 1px solid var(--line); border-radius: 20px;
-  padding: 22px 26px; margin-bottom: 14px; animation: rise .8s var(--ease) both;
-  box-shadow: inset 0 3px 0 var(--ink), 0 1px 2px rgba(20,24,33,.03);
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+  padding: 22px 26px; margin-bottom: 12px; animation: rise .8s var(--ease) both;
+  box-shadow: var(--shadow-soft);
   transition: transform .5s var(--ease), box-shadow .5s var(--ease);
 }
-.story-card:hover { transform: translateY(-2px); box-shadow: inset 0 3px 0 var(--ink), var(--shadow-lift); }
-.story-hl { font-weight: 700; font-size: 18px; line-height: 1.25; letter-spacing: -.025em; }
-.story-sum { font-size: 13.5px; margin: 9px 0 10px; color: var(--ink-2); }
-.story-meta { font-size: 12px; color: var(--muted); border-top: 1px dashed var(--line-2); padding-top: 9px; }
-.story-meta div { margin-top: 2px; }
+.story-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.story-hl { font-weight: 600; font-size: 19px; line-height: 1.28; letter-spacing: -.022em; color: var(--ink); }
+.story-sum { font-size: 14.5px; line-height: 1.55; margin: 8px 0 12px; color: var(--ink-2); }
+.story-meta { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 11px; }
+.story-meta div { margin-top: 3px; }
 .story-meta b { color: var(--ink-2); font-weight: 600; }
 
 /* ═══ REPORT ═══ */
@@ -975,8 +976,36 @@ function isHigh(c) { return c.traction === 'high' || c.traction === 'very_high';
 
 /* ════════════════════ AUTO-GENERATE STORIES FROM CLIPS ════════════════════ */
 const TR_RANK = { very_high: 4, high: 3, moderate: 2, low: 1, very_low: 0 };
-function normKey(s) { return (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 3).slice(0, 6).join(' '); }
 function uniq(a) { return [...new Set(a.filter(Boolean))]; }
+// Significant-word set of a clip's caption (drops URLs, punctuation, short words).
+function clipTokens(c) {
+  return new Set(String(c.subject || '').toLowerCase()
+    .replace(/https?:\/\/\S+/g, ' ').replace(/[^a-z0-9 ]/g, ' ')
+    .split(/\s+/).filter(w => w.length > 3));
+}
+function jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let inter = 0; a.forEach(x => { if (b.has(x)) inter++; });
+  return inter / (a.size + b.size - inter);
+}
+// Group clips that describe the SAME story. Two clips merge when they share an
+// identical link, OR their caption token-sets overlap strongly (handles one post
+// syndicated across platforms with minor wording/handle differences, e.g.
+// "@cnainsider" vs "@CNA Insider"). Union-find keeps clusters transitive.
+function clusterClips(clips) {
+  const toks = clips.map(clipTokens);
+  const parent = clips.map((_, i) => i);
+  const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const union = (a, b) => { parent[find(a)] = find(b); };
+  for (let i = 0; i < clips.length; i++)
+    for (let j = i + 1; j < clips.length; j++) {
+      const sameLink = clips[i].link && clips[i].link === clips[j].link;
+      if (sameLink || jaccard(toks[i], toks[j]) >= 0.5) union(i, j);
+    }
+  const g = {};
+  clips.forEach((c, i) => { const r = find(i); (g[r] = g[r] || []).push(c); });
+  return Object.values(g);
+}
 // Comments tier from comment count, using the MM Guide's non-TikTok breakpoints
 // (>300 high · 100-300 moderate · <100 low) applied to comments.
 function commentsTier(n) { n = n || 0; return n > 300 ? 'high' : n >= 100 ? 'moderate' : 'low'; }
@@ -999,68 +1028,81 @@ async function generateStories(silent) {
   if (!clips.length) { if (!silent) toast('No clips to generate from.'); return 0; }
   S.day.stories = S.day.stories || [];
 
-  const clusters = {};
-  clips.forEach(c => { const k = normKey(c.subject) || c.id; (clusters[k] = clusters[k] || []).push(c); });
+  // Stories the user made or edited by hand are preserved verbatim; their clips
+  // are excluded from re-clustering so they're never duplicated.
+  const kept = S.day.stories.filter(s => !s.auto || s.edited);
+  const keptIds = new Set(kept.flatMap(s => s.clipIds || []));
+  // Previous auto drafts — we reuse their LLM text (and any traction) by clip
+  // overlap so re-running is free, non-destructive, and never re-summarises.
+  const prevAuto = S.day.stories.filter(s => s.auto && !s.edited);
 
-  const done = new Set(S.day.stories.map(s => s.srcKey).filter(Boolean));
-  const todo = Object.entries(clusters).filter(([k]) => !done.has(k));
-  if (!todo.length) { if (!silent) toast('All clips already have stories.'); return 0; }
+  const pool = clips.filter(c => !keptIds.has(c.id));
+  const clusters = clusterClips(pool);
 
-  // ask Gemini to rewrite each new cluster (one batched call). Map results by
-  // index (robust) with key as a backup, so an LLM key mismatch can't drop a summary.
-  const byIdx = {}; const byKey = {};
-  try {
-    const items = todo.map(([k, group], i) => ({
-      key: String(i),
-      pub: uniq(group.map(c => c.pub)).join(', '),
-      platforms: uniq(group.map(c => c.plat).filter(Boolean)).join(', '),
-      texts: group.map(c => c.subject).filter(Boolean),
-    }));
-    const res = await api('/api/summarize', { items });
-    if (res.ok) (res.results || []).forEach((r, i) => { byIdx[i] = r; if (r && r.key != null) byKey[String(r.key)] = r; });
-  } catch (e) { /* fall back to caption below */ }
+  const matchPrev = group => {
+    const ids = new Set(group.map(c => c.id));
+    return prevAuto.find(s => (s.clipIds || []).some(id => ids.has(id)));
+  };
+  const fresh = clusters.filter(g => !matchPrev(g));
 
-  let made = 0;
-  todo.forEach(([k, group], idx) => {
+  // one batched Gemini call for the genuinely new clusters only
+  const byIdx = {};
+  if (fresh.length) {
+    try {
+      const items = fresh.map((group, i) => ({
+        key: String(i),
+        pub: uniq(group.map(c => c.pub)).join(', '),
+        platforms: uniq(group.map(c => c.plat).filter(Boolean)).join(', '),
+        texts: group.map(c => c.subject).filter(Boolean),
+      }));
+      const res = await api('/api/summarize', { items });
+      if (res.ok) (res.results || []).forEach((r, i) => { byIdx[i] = r; });
+    } catch (e) { /* fall back to caption below */ }
+  }
+
+  const built = []; let made = 0;
+  clusters.forEach(group => {
+    const reported = uniq(group.filter(c => !c.plat).map(c => c.pub)).join(', ');
+    // every social clip in the cluster contributes a "publication (platform)" entry
+    const published = uniq(group.filter(c => c.plat).map(c => `${c.pub} (${c.plat})`)).join(', ');
+    const clipIds = group.map(c => c.id);
+    const prev = matchPrev(group);
+    if (prev) { built.push({ ...prev, reported, published, clipIds }); return; }
+
+    const i = fresh.indexOf(group);
+    const sum = byIdx[i];
     const rep = group.slice().sort((a, b) => (b.subject || '').length - (a.subject || '').length)[0];
     const capt = (rep.subject || '').trim();
-    const sum = byKey[String(idx)] || byIdx[idx];
     const hl = (sum && sum.headline) ? sum.headline : (capt.length > 130 ? capt.slice(0, 130) + '…' : capt);
     const summary = (sum && sum.summary) ? sum.summary : capt;
     if (!hl) return;
 
-    // own SPS/YRSG accounts → Social Media Updates (split by org); else use the LLM
-    // category. Social Media Updates is reserved for own accounts only.
+    // own SPS/YRSG accounts → Social Media Updates (split by org); CARE partners →
+    // CARE Network; otherwise the LLM category. Social Media Updates is reserved
+    // for own accounts only.
     let cat, subOrg = '';
-    const org = group.map(c => ownOrg(c.kw)).find(Boolean);
+    const org = group.map(c => ownOrg(c.kw) || ownOrg(c.pub)).find(Boolean);
     if (org) { cat = 'social_updates'; subOrg = org; }
-    else if (group.some(c => isCarePartner(c.kw))) { cat = 'care_network'; }
-    else {
-      cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : 'daily_news';
-      if (cat === 'social_updates') cat = 'daily_news';
-    }
-    const reported = uniq(group.filter(c => !c.plat).map(c => c.pub)).join(', ');
-    const published = uniq(group.filter(c => c.plat).map(c => `${c.pub} (${c.plat})`)).join(', ');
+    else if (group.some(c => isCarePartner(c.kw) || isCarePartner(c.pub))) { cat = 'care_network'; }
+    else { cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : 'daily_news'; if (cat === 'social_updates') cat = 'daily_news'; }
 
-    S.day.stories.push({
-      id: 's' + Date.now().toString(36) + made, srcKey: k, cat, subOrg, hl,
+    built.push({ id: 's' + Date.now().toString(36) + made, clipIds, cat, subOrg, hl,
       summary, reported, syndicated: '', published,
       // traction left blank — fill it in manually via Edit (tier + comment observations)
-      trInt: '', trCom: '', trNote: '', auto: true,
-    });
+      trInt: '', trCom: '', trNote: '', auto: true });
     made++;
   });
-  if (made) {
-    persist();
-    // reflect the new story count on the calendar dot immediately (no round-trip)
-    const e = S.days.find(d => d.date === S.date);
-    if (e) e.stories = S.day.stories.length;
-    else S.days.push({ date: S.date, clips: (S.day.clips || []).length, stories: S.day.stories.length, fetched_at: S.day.fetched_at });
-    renderLedger();
-  }
+
+  S.day.stories = [...kept, ...built];
+  persist();
+  // reflect the new story count on the calendar dot immediately (no round-trip)
+  const e = S.days.find(d => d.date === S.date);
+  if (e) e.stories = S.day.stories.length;
+  else S.days.push({ date: S.date, clips: clips.length, stories: S.day.stories.length, fetched_at: S.day.fetched_at });
+  renderLedger();
   renderStories(); badges();
-  if (!silent) toast(made ? `Generated ${made} story draft${made > 1 ? 's' : ''} from clips. Edit as needed.` : 'All clips already have stories.');
-  return made;
+  if (!silent) toast(`Generated ${built.length} story draft${built.length === 1 ? '' : 's'} from ${clips.length} clip${clips.length === 1 ? '' : 's'}.`);
+  return built.length;
 }
 
 /* ════════════════════ REPORT SETTINGS MODAL ════════════════════ */
@@ -1190,6 +1232,7 @@ function storyFromClip(id) {
   const c = S.day.clips.find(x => x.id === id);
   if (!c) return;
   openStoryModal();
+  S.fromClipId = id;
   el('sm-cat').value = c.cat === 'fyi' ? 'fyi' : c.cat;
   el('sm-hl').value = c.subject.length > 110 ? c.subject.slice(0, 110) + '…' : c.subject;
   el('sm-reported').value = c.plat ? '' : c.pub;
@@ -1243,6 +1286,7 @@ function renderStories() {
 
 function openStoryModal(id) {
   S.editStoryId = id || null;
+  S.fromClipId = null;
   const s = id ? S.day.stories.find(x => x.id === id) : null;
   el('story-modal-title').textContent = id ? 'Edit story' : 'Add story';
   el('sm-cat').value = s ? s.cat : 'daily_news';
@@ -1268,11 +1312,14 @@ function saveStory() {
     trNote: el('sm-tr-note').value.trim() };
   if (S.editStoryId) {
     const i = S.day.stories.findIndex(x => x.id === S.editStoryId);
-    if (i !== -1) S.day.stories[i] = { ...S.day.stories[i], ...s };
+    // mark as hand-edited so a re-generate never overwrites it
+    if (i !== -1) S.day.stories[i] = { ...S.day.stories[i], ...s, edited: true };
   } else {
     s.id = 's' + Date.now();
+    if (S.fromClipId) { s.clipIds = [S.fromClipId]; }   // exclude this clip from auto-clustering
     S.day.stories.push(s);
   }
+  S.fromClipId = null;
   closeModal('story-modal'); persist(); renderStories(); badges();
 }
 
