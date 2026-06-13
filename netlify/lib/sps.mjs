@@ -326,7 +326,9 @@ export async function runSocialFetch(date) {
   if (!APIFY_TOKEN()) throw new Error('APIFY_TOKEN not set');
   const cfg = await getWatchlist();
   let day = (await getDay(date)) || freshDay(date);
-  const cutoff = new Date(Date.now() - (cfg.lookback_days || 2) * 864e5);
+  // Social accounts (activists, orgs, ministers) post SPS-relevant content
+  // weekly, not daily — use a wider window than the news fetch.
+  const cutoff = new Date(Date.now() - (cfg.social_lookback_days || 7) * 864e5);
   const limit = cfg.posts_per_account || 3;
   const acc = cfg.accounts || {};
   const errors = []; let results = [];

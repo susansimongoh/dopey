@@ -45,6 +45,7 @@ def load_secrets():
 # Default search config — from the MM Search Guide
 DEFAULT_KEYWORDS = {
     "lookback_days": 2,
+    "social_lookback_days": 7,
     "posts_per_account": 5,
     "keywords": [
         {"q": "Singapore Prison Service",  "cat": "daily_news"},
@@ -482,7 +483,8 @@ def run_social_fetch(date, force=False):
         return day, 'cached'
 
     cfg = load_keywords()
-    cutoff = datetime.now(timezone.utc) - timedelta(days=cfg.get('lookback_days', 2))
+    # Social accounts post SPS-relevant content weekly, not daily — wider window
+    cutoff = datetime.now(timezone.utc) - timedelta(days=cfg.get('social_lookback_days', 7))
     limit = cfg.get('posts_per_account', 5)
     acc = cfg.get('accounts', {})
 
