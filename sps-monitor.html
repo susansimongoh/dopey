@@ -1023,17 +1023,14 @@ async function generateStories(silent) {
     const summary = (sum && sum.summary) ? sum.summary : capt;
     if (!hl) return;
 
-    // own SPS/YRSG accounts → Social Media Updates (split by org); else use the LLM category
+    // own SPS/YRSG accounts → Social Media Updates (split by org); else use the LLM
+    // category. Social Media Updates is reserved for own accounts only.
     let cat, subOrg = '';
     const org = group.map(c => ownOrg(c.kw)).find(Boolean);
     if (org) { cat = 'social_updates'; subOrg = org; }
     else {
-      cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : null;
-      if (!cat) {
-        const catCount = {}; group.forEach(c => { catCount[c.cat] = (catCount[c.cat] || 0) + 1; });
-        cat = Object.entries(catCount).sort((a, b) => b[1] - a[1])[0][0];
-        if (!CAT_KEYS.includes(cat)) cat = 'daily_news';
-      }
+      cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : 'daily_news';
+      if (cat === 'social_updates') cat = 'daily_news';
     }
     const reported = uniq(group.filter(c => !c.plat).map(c => c.pub)).join(', ');
     const published = uniq(group.filter(c => c.plat).map(c => `${c.pub} (${c.plat})`)).join(', ');

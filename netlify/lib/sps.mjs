@@ -381,8 +381,8 @@ For each item below (a social media post or news article, sometimes several rela
    "issues" = executions, the death penalty, death row, court cases or controversies that directly affect or criticise SPS, custody/treatment complaints, anti-death-penalty activism.
    "daily_news" = general news about SPS, Changi Prison, the Ministry of Home Affairs prison matters, sentencing/court news involving imprisonment, operational prison news.
    "yellow_ribbon" = anything by or about Yellow Ribbon Singapore (YRSG), the Yellow Ribbon Project, or its reintegration / second-chances programmes.
-   "care_network" = CARE Network partners and their activities (SANA, SACA, Prison Fellowship Singapore, Yellow Ribbon Fund, ISCOS, NeuGen, community partners).
-   "social_updates" = posts published by SPS's own official accounts (Singapore Prison Service).
+   "care_network" = CARE Network partners and their activities (SANA, SACA, Prison Fellowship Singapore, Yellow Ribbon Fund, ISCOS, NeuGen, community partners). A post BY Prison Fellowship Singapore about its own events belongs here, NOT in social_updates.
+   "social_updates" = ONLY posts published by the Singapore Prison Service's or Yellow Ribbon Singapore's OWN official accounts. Never use this for any other organisation.
    "fyi" = minor or tangential mentions that do not fit the above.
 Return ONLY a JSON array, one object per item, each with keys "key", "headline", "summary", "category". Use the exact "key" given for each item.
 
