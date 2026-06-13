@@ -410,6 +410,12 @@ button { font-family: inherit; }
 .kw-row .f-input { flex: 1; }
 .kw-row .f-select { width: 150px; }
 .kw-del { background: none; border: none; color: var(--verm); cursor: pointer; font-size: 16px; padding: 2px 6px; }
+.cm-img-row { display: flex; gap: 8px; align-items: center; }
+.cm-img-row .f-input { flex: 1; }
+.cm-upload { white-space: nowrap; cursor: pointer; flex-shrink: 0; }
+.cm-img-preview:not(:empty) { margin-top: 10px; }
+.cm-img-preview img { max-width: 160px; max-height: 200px; border-radius: 12px; box-shadow: var(--shadow-soft); display: block; }
+.cm-img-preview .ph { font-size: 12px; color: var(--muted); }
 
 /* ═══ TOASTS ═══ */
 #toasts { position: fixed; bottom: 24px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 9px; }
@@ -506,7 +512,6 @@ button { font-family: inherit; }
     <section id="tab-clips" class="hidden">
       <div class="toolbar">
         <button class="btn btn-sm btn-ink" onclick="openClipModal()">+ Add clip manually</button>
-        <button class="btn btn-sm" onclick="snapAllClips()">📷 Snap all missing</button>
         <span class="spacer"></span>
         <input class="search" id="clips-search" placeholder="filter…" oninput="renderClips()">
       </div>
@@ -551,6 +556,12 @@ button { font-family: inherit; }
     <textarea class="f-area" id="cm-subject"></textarea>
     <label class="f-label">Link</label>
     <input class="f-input" id="cm-link" placeholder="https://…">
+    <label class="f-label">Hero image</label>
+    <div class="cm-img-row">
+      <input class="f-input" id="cm-img" placeholder="Paste image URL…" oninput="renderClipImgPreview()">
+      <label class="btn btn-sm cm-upload">⬆ Upload<input type="file" id="cm-img-file" accept="image/*" hidden onchange="onClipImgFile(event)"></label>
+    </div>
+    <div id="cm-img-preview" class="cm-img-preview"></div>
     <div class="m-foot">
       <button class="btn btn-ghost" onclick="closeModal('clip-modal')">Cancel</button>
       <button class="btn btn-ink" onclick="saveClip()">Save clip</button>
@@ -885,7 +896,9 @@ function renderMasthead() {
 // Apify CDN) are used as-is; local paths (data/shots/x.png) get a cache-buster.
 function shotSrc(c) {
   if (!c.shot) return '';
-  return /^https?:/.test(c.shot) ? c.shot : c.shot + '?t=' + (c.shotAt || 0);
+  // http(s) remote URLs and inline data: URLs are used verbatim; only local
+  // server file paths get a cache-busting query.
+  return /^(https?:|data:)/.test(c.shot) ? c.shot : c.shot + '?t=' + (c.shotAt || 0);
 }
 
 function fmtN(n) {
@@ -1209,21 +1222,43 @@ function openClipModal(id) {
   el('cm-plat').value = c ? (c.plat || '') : '';
   el('cm-subject').value = c ? c.subject : '';
   el('cm-link').value = c ? (c.link || '') : '';
+  el('cm-img').value = c ? (c.shot || c.img || '') : '';
+  el('cm-img-file').value = '';
+  renderClipImgPreview();
   el('clip-modal').classList.remove('hidden');
   setTimeout(() => el('cm-pub').focus(), 60);
 }
 function editClip(id) { openClipModal(id); }
 
+// Hero-image preview + upload (file → data URL stored inline in the clip).
+function renderClipImgPreview() {
+  const v = el('cm-img').value.trim();
+  el('cm-img-preview').innerHTML = v
+    ? `<img src="${esc(v)}" referrerpolicy="no-referrer" onerror="this.parentNode.innerHTML='<span class=ph>Image preview unavailable (it will still be saved).</span>'">`
+    : '';
+}
+function onClipImgFile(ev) {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  if (f.size > 4 * 1024 * 1024) { toast('Image too large (max 4 MB).'); ev.target.value = ''; return; }
+  const r = new FileReader();
+  r.onload = () => { el('cm-img').value = r.result; renderClipImgPreview(); };
+  r.readAsDataURL(f);   // inline data URL → persists with the clip, no hosting needed
+}
+
 function saveClip() {
   const pub = el('cm-pub').value.trim();
   if (!pub) { toast('Publication name is required.'); return; }
+  const shot = el('cm-img').value.trim();
   const c = { date: el('cm-date').value, cat: el('cm-cat').value, pub,
-    plat: el('cm-plat').value, subject: el('cm-subject').value.trim(), link: el('cm-link').value.trim() };
+    plat: el('cm-plat').value, subject: el('cm-subject').value.trim(), link: el('cm-link').value.trim(),
+    shot, img: shot };   // keep both field names in sync so thumbnails + report both find it
   if (S.editClipId) {
     const i = S.day.clips.findIndex(x => x.id === S.editClipId);
-    if (i !== -1) S.day.clips[i] = { ...S.day.clips[i], ...c };
+    if (i !== -1) S.day.clips[i] = { ...S.day.clips[i], ...c, shotAt: Date.now() };
   } else {
     c.id = 'c' + Date.now();
+    c.shotAt = Date.now();
     S.day.clips.push(c);
   }
   closeModal('clip-modal'); persist(); renderClips(); badges();
