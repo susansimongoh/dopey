@@ -408,13 +408,10 @@ async function outletFeeds(cutoff, errors) {
   return out;
 }
 
-export async function runNewsFetch(date) {
-  const cfg = await getWatchlist();
-  let day = (await getDay(date)) || freshDay(date);
-  const lookback = cfg.lookback_days || 2;
+// Gather + dedupe all news/Reddit/YouTube/outlet items within `lookback` days.
+async function gatherNews(cfg, lookback, errors) {
   const cutoff = new Date(Date.now() - lookback * 864e5);
   const kws = cfg.keywords || [];
-  const errors = [];
   const tasks = [];
   for (const kw of kws) {
     tasks.push(googleNews(kw, lookback, cutoff).catch((e) => { errors.push(`Google ${kw.q}: ${String(e).slice(0, 50)}`); return []; }));
@@ -429,13 +426,50 @@ export async function runNewsFetch(date) {
   results.sort((a, b) => (a.src === 'Google News' ? 0 : 1) - (b.src === 'Google News' ? 0 : 1));
   const seenT = new Set(); const uniq = [];
   for (const it of results) { const k = it.title.toLowerCase().replace(/\W+/g, '').slice(0, 80); if (k && seenT.has(k)) continue; seenT.add(k); uniq.push(it); }
+  return uniq;
+}
+
+export async function runNewsFetch(date) {
+  const cfg = await getWatchlist();
+  const errors = [];
+  const uniq = await gatherNews(cfg, cfg.lookback_days || 2, errors);
   // re-read latest day in case a social sweep wrote concurrently
-  day = (await getDay(date)) || day;
+  let day = (await getDay(date)) || freshDay(date);
   mergeClips(day, uniq, cfg);
   day.fetched_at = new Date().toISOString();
   day.fetch_errors = errors;
   await putDay(day);
   return day;
+}
+
+// One-off catch-up: fetch a wide window and bucket each SPS-relevant item into the
+// day it was PUBLISHED (not the fetch day), then regenerate stories per day. Used
+// by /api/backfill to fill in history (e.g. "from the 4th").
+export async function runBackfill(fromDate) {
+  const cfg = await getWatchlist();
+  const errors = [];
+  const today = new Date().toISOString().slice(0, 10);
+  const lookback = Math.min(45, Math.ceil((Date.now() - new Date(fromDate + 'T00:00:00Z').getTime()) / 864e5) + 1);
+  const uniq = await gatherNews(cfg, lookback, errors);
+  // bucket by published date, within [fromDate, today]
+  const byDate = {};
+  for (const it of uniq) {
+    const d = (it.published || '').slice(0, 10);
+    if (!d || d < fromDate || d > today) continue;
+    (byDate[d] = byDate[d] || []).push(it);
+  }
+  const summary = [];
+  for (const d of Object.keys(byDate).sort()) {
+    let day = (await getDay(d)) || freshDay(d);
+    const before = (day.clips || []).length;
+    mergeClips(day, byDate[d], cfg);
+    day.fetched_at = new Date().toISOString();
+    day.fetch_errors = errors;
+    day = await rebuildStories(day);   // generate stories for the newly-added clips
+    await putDay(day);
+    summary.push({ date: d, added: (day.clips || []).length - before, clips: (day.clips || []).length, stories: (day.stories || []).length });
+  }
+  return { ok: true, from: fromDate, lookback, days: summary, errors };
 }
 
 // ── Apify social sweep ───────────────────────────────────────────────────
