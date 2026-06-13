@@ -960,6 +960,17 @@ function isHigh(c) { return c.traction === 'high' || c.traction === 'very_high';
 const TR_RANK = { very_high: 4, high: 3, moderate: 2, low: 1, very_low: 0 };
 function normKey(s) { return (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 3).slice(0, 6).join(' '); }
 function uniq(a) { return [...new Set(a.filter(Boolean))]; }
+// Comments tier from comment count, using the MM Guide's non-TikTok breakpoints
+// (>300 high · 100-300 moderate · <100 low) applied to comments.
+function commentsTier(n) { n = n || 0; return n > 300 ? 'high' : n >= 100 ? 'moderate' : 'low'; }
+// Highest tier across a cluster for interactions (clip.traction) and comments.
+function clusterTraction(group) {
+  const social = group.filter(c => c.eng);
+  if (!social.length) return { trInt: '', trCom: '' };  // news only → not assessed
+  const trInt = group.map(c => c.traction).filter(Boolean).sort((a, b) => TR_RANK[b] - TR_RANK[a])[0] || '';
+  const trCom = social.map(c => commentsTier((c.eng || {}).comments)).sort((a, b) => TR_RANK[b] - TR_RANK[a])[0] || '';
+  return { trInt, trCom };
+}
 
 // Cluster the day's clips by subject similarity, then rewrite each new cluster
 // into a journalist-style story via Gemini (/api/summarize). Skips clusters that
@@ -1010,12 +1021,12 @@ async function generateStories(silent) {
     }
     const reported = uniq(group.filter(c => !c.plat).map(c => c.pub)).join(', ');
     const published = uniq(group.filter(c => c.plat).map(c => `${c.pub} (${c.plat})`)).join(', ');
-    const tr = group.map(c => c.traction).filter(Boolean).sort((a, b) => TR_RANK[b] - TR_RANK[a])[0] || '';
+    const { trInt, trCom } = clusterTraction(group);
 
     S.day.stories.push({
       id: 's' + Date.now().toString(36) + made, srcKey: k, cat, hl,
       summary, reported, syndicated: '', published,
-      trInt: tr, trCom: '', trNote: '', auto: true,
+      trInt, trCom, trNote: '', auto: true,
     });
     made++;
   });
