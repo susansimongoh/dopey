@@ -122,6 +122,88 @@ export async function findUser(email) {
   return (await getUsers()).find((x) => x.email.toLowerCase() === (email || '').toLowerCase()) || null;
 }
 
+// ── Story generation (server-side mirror of the client's generateStories) ──
+// Kept in sync with sps-monitor.html so /api/regen rebuilds days atomically in
+// the backend (no browser, no page-state races).
+const _normHandle = (s) => (s || '').replace(/^@/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const SPS_OWN = ['singaporeprisonservice'];
+const YRSG_OWN = ['yellowribbonsg', 'yellowribbonsingapore'];
+const CARE_PARTNERS = ['prisonfellowshipsg', 'prisonfellowshipsingapore', 'singaporeantinarcotics', 'saca', 'iscos', 'neugen'];
+const ownOrg = (h) => { const n = _normHandle(h); if (SPS_OWN.includes(n)) return 'sps'; if (YRSG_OWN.includes(n)) return 'yrsg'; return null; };
+const isCarePartner = (h) => CARE_PARTNERS.includes(_normHandle(h));
+const CAT_KEYS = ['issues', 'daily_news', 'yellow_ribbon', 'care_network', 'social_updates', 'fyi'];
+const _uniq = (a) => [...new Set(a.filter(Boolean))];
+const _tokens = (c) => new Set(String(c.subject || '').toLowerCase().replace(/https?:\/\/\S+/g, ' ').replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 3));
+const _jaccard = (a, b) => { if (!a.size || !b.size) return 0; let i = 0; a.forEach((x) => { if (b.has(x)) i++; }); return i / (a.size + b.size - i); };
+const PHRASE_STOP = new Set(['yellow ribbon', 'yellow ribbon singapore', 'yellow ribbon project', 'yellow ribbon community', 'singapore prison', 'prison service', 'singapore prison service', 'home team', 'ministry of home affairs', 'captains of lives', 'second chances', 'changi prison', 'changi prison complex']);
+const _phrases = (c) => { const m = String(c.subject || '').match(/\b([A-Z][A-Za-z]+(?:\s+(?:of\s+|the\s+)?[A-Z][A-Za-z]+)+)\b/g) || []; const out = new Set(); m.forEach((p) => { const k = p.toLowerCase().replace(/\s+/g, ' ').trim(); if (k.split(' ').length >= 2 && !PHRASE_STOP.has(k)) out.add(k); }); return out; };
+const _share = (a, b) => { for (const p of a) if (b.has(p)) return true; return false; };
+function _cluster(clips) {
+  const toks = clips.map(_tokens), phr = clips.map(_phrases);
+  const parent = clips.map((_, i) => i);
+  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const union = (a, b) => { parent[find(a)] = find(b); };
+  for (let i = 0; i < clips.length; i++) for (let j = i + 1; j < clips.length; j++) {
+    const sameLink = clips[i].link && clips[i].link === clips[j].link;
+    if (sameLink || _jaccard(toks[i], toks[j]) >= 0.5 || _share(phr[i], phr[j])) union(i, j);
+  }
+  const g = {}; clips.forEach((c, i) => { const r = find(i); (g[r] = g[r] || []).push(c); });
+  return Object.values(g);
+}
+
+// Rebuild day.stories from day.clips. Preserves hand-edited/manual stories and
+// reuses prior auto drafts that already have a real LLM summary (by clip overlap);
+// only genuinely-new clusters hit Gemini. Caption fallbacks are tagged llm:false
+// so they self-heal on a later run. Mutates and returns `day`.
+export async function rebuildStories(day) {
+  const clips = day.clips || [];
+  day.stories = day.stories || [];
+  const kept = day.stories.filter((s) => !s.auto || s.edited);
+  const keptIds = new Set(kept.flatMap((s) => s.clipIds || []));
+  const norm = (t) => String(t || '').replace(/[^a-z0-9]/gi, '').slice(0, 40);
+  const isDraft = (s) => s.llm === false || (s.llm === undefined && norm(s.hl) === norm(s.summary));
+  const prevReal = day.stories.filter((s) => s.auto && !s.edited && !isDraft(s));
+  const pool = clips.filter((c) => !keptIds.has(c.id));
+  const clusters = _cluster(pool);
+  const matchPrev = (g) => { const ids = new Set(g.map((c) => c.id)); return prevReal.find((s) => (s.clipIds || []).some((id) => ids.has(id))); };
+  const fresh = clusters.filter((g) => !matchPrev(g));
+
+  const byIdx = {};
+  if (fresh.length) {
+    try {
+      const items = fresh.map((g, i) => ({ key: String(i), pub: _uniq(g.map((c) => c.pub)).join(', '), platforms: _uniq(g.map((c) => c.plat).filter(Boolean)).join(', '), texts: g.map((c) => c.subject).filter(Boolean) }));
+      (await summarizeItems(items) || []).forEach((r, i) => { byIdx[i] = r; });
+    } catch (e) { /* caption fallback below */ }
+  }
+
+  const built = []; let made = 0;
+  clusters.forEach((group) => {
+    const reported = _uniq(group.filter((c) => !c.plat).map((c) => c.pub)).join(', ');
+    const published = _uniq(group.filter((c) => c.plat).map((c) => `${c.pub} (${c.plat})`)).join(', ');
+    const clipIds = group.map((c) => c.id);
+    const prev = matchPrev(group);
+    if (prev) { built.push({ ...prev, reported, published, clipIds }); return; }
+    const i = fresh.indexOf(group);
+    const sum = byIdx[i];
+    const llm = !!(sum && sum.summary);
+    const rep = group.slice().sort((a, b) => (b.subject || '').length - (a.subject || '').length)[0];
+    const capt = (rep.subject || '').trim();
+    const cp = [...capt];
+    const hl = (sum && sum.headline) ? sum.headline : (cp.length > 130 ? cp.slice(0, 130).join('') + '…' : capt);
+    const summary = (sum && sum.summary) ? sum.summary : capt;
+    if (!hl) return;
+    let cat, subOrg = '';
+    const org = group.map((c) => ownOrg(c.kw) || ownOrg(c.pub)).find(Boolean);
+    if (org) { cat = 'social_updates'; subOrg = org; }
+    else if (group.some((c) => isCarePartner(c.kw) || isCarePartner(c.pub))) { cat = 'care_network'; }
+    else { cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : 'daily_news'; if (cat === 'social_updates') cat = 'daily_news'; }
+    built.push({ id: 's' + Date.now().toString(36) + made, clipIds, cat, subOrg, hl, summary, reported, syndicated: '', published, llm, trInt: '', trCom: '', trNote: '', auto: true });
+    made++;
+  });
+  day.stories = [...kept, ...built];
+  return day;
+}
+
 export function freshDay(date) {
   return {
     date, fetched_at: null, social_fetched_at: null,

@@ -1,7 +1,7 @@
 // Synchronous API: fast Supabase-backed operations.
 // Heavy fetching lives in the *-background functions.
 import { getDay, putDay, listDays, getWatchlist, putWatchlist, ogImage, summarizeItems,
-  hashPassword, makeToken, verifyToken, getUsers, putUsers, findUser } from '../lib/sps.mjs';
+  hashPassword, makeToken, verifyToken, getUsers, putUsers, findUser, rebuildStories } from '../lib/sps.mjs';
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -72,6 +72,18 @@ export default async (req) => {
       await putDay(day);
       return json({ ok: true, saved: day.date });
     }
+    if (req.method === 'POST' && path === '/api/regen') {
+      // Atomic server-side story rebuild for one day (no browser, no race). Open
+      // like /api/save — it only regenerates stories from a day's existing clips.
+      const { date } = await req.json();
+      if (!date) return json({ ok: false, error: 'date required' }, 400);
+      const day = await getDay(date);
+      if (!day || !(day.clips || []).length) return json({ ok: true, date, stories: 0, note: 'no clips' });
+      const updated = await rebuildStories(day);
+      await putDay(updated);
+      const stories = (updated.stories || []);
+      return json({ ok: true, date, stories: stories.length, fallbacks: stories.filter((s) => s.llm === false).length });
+    }
     if (req.method === 'POST' && path === '/api/summarize') {
       const { items } = await req.json();
       if (!items || !items.length) return json({ ok: true, results: [] });
@@ -93,5 +105,5 @@ export default async (req) => {
 };
 
 export const config = {
-  path: ['/api/status', '/api/login', '/api/users', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/snap', '/api/summarize'],
+  path: ['/api/status', '/api/login', '/api/users', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/regen', '/api/snap', '/api/summarize'],
 };
