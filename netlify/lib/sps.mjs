@@ -275,7 +275,9 @@ export function mergeClips(day, results, cfg) {
   for (const it of results) {
     if (have.has(it.id) || gone.has(it.id)) continue;
     if (it.link && haveLinks.has(it.link)) continue;          // same URL = true duplicate
-    if (!valid.has(it.kw)) continue;
+    // Outlet RSS items are trusted by SOURCE (a monitored SG/MY outlet), so they
+    // skip the keyword gate but STILL must pass the SPS relevance gate on the title.
+    if (!it.outlet && !valid.has(it.kw)) continue;
     if (!relevant(it.title, terms)) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
@@ -368,6 +370,42 @@ async function youtube(handles, cutoff, errors) {
   return out;
 }
 
+// Named SG/MY news outlets from the MM Search Guide that publish a usable RSS
+// feed. These are FULL feeds (all sections) — every item is filtered by the SPS
+// relevance gate in mergeClips, so only SPS-relevant articles become clips.
+// (AsiaOne, TODAY, Yahoo SG and Zaobao have no usable native RSS; they're already
+// covered by the keyword-scoped Google News fetch.)
+const OUTLET_FEEDS = [
+  { name: 'CNA', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml' },
+  { name: 'The Straits Times', url: 'https://www.straitstimes.com/news/singapore/rss.xml' },
+  { name: 'The Business Times', url: 'https://www.businesstimes.com.sg/rss/singapore' },
+  { name: 'Mothership', url: 'https://mothership.sg/feed/' },
+  { name: 'Must Share News', url: 'https://mustsharenews.com/feed/' },
+  { name: 'Rice Media', url: 'https://www.ricemedia.co/feed/' },
+  { name: 'Berita Harian', url: 'https://www.beritaharian.sg/rss.xml' },
+];
+async function outletFeeds(cutoff, errors) {
+  const out = [];
+  for (const f of OUTLET_FEEDS) {
+    try {
+      const xml = await httpText(f.url, 15000);
+      for (const it of blocks(xml, 'item')) {
+        let link = tag(it, 'link');
+        if (!link) { const lm = it.match(/<link[^>]*href="([^"]+)"/); link = lm ? decode(lm[1]) : ''; }
+        const title = tag(it, 'title');
+        const pd = tag(it, 'pubDate') || tag(it, 'dc:date');
+        const dt = pd ? new Date(pd) : null;
+        if (!title || !link || !dt || isNaN(dt) || dt < cutoff) continue;
+        const im = it.match(/<enclosure[^>]*url="([^"]+)"/) || it.match(/<media:content[^>]*url="([^"]+)"/) || it.match(/<media:thumbnail[^>]*url="([^"]+)"/);
+        out.push({ id: await sha1_12(link), src: f.name, kw: f.name, cat: 'daily_news',
+          title, link, pub: f.name, plat: '', published: dt.toISOString(),
+          eng: null, img: im ? decode(im[1]) : null, outlet: true, status: 'new' });
+      }
+    } catch (e) { errors.push(`${f.name}: ${String(e).slice(0, 50)}`); }
+  }
+  return out;
+}
+
 export async function runNewsFetch(date) {
   const cfg = await getWatchlist();
   let day = (await getDay(date)) || freshDay(date);
@@ -381,6 +419,7 @@ export async function runNewsFetch(date) {
     tasks.push(bingNews(kw, cutoff).catch((e) => { errors.push(`Bing ${kw.q}: ${String(e).slice(0, 50)}`); return []; }));
   }
   tasks.push(redditCombined(kws, cutoff).catch((e) => { errors.push(`Reddit: ${String(e).slice(0, 50)}`); return []; }));
+  tasks.push(outletFeeds(cutoff, errors).catch((e) => { errors.push(`Outlets: ${String(e).slice(0, 50)}`); return []; }));
   const ytH = (cfg.accounts && cfg.accounts.youtube) || [];
   if (ytH.length) tasks.push(youtube(ytH, cutoff, errors));
   let results = (await Promise.all(tasks)).flat();
