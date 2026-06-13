@@ -26,15 +26,18 @@ export async function getDay(date) {
   return rows && rows[0] ? rows[0].payload : null;
 }
 
+// Strip lone UTF-16 surrogates (e.g. an emoji cut in half by a slice). Postgres
+// jsonb rejects \uXXXX lone-surrogate escapes with PGRST102 "invalid json", so we
+// clean every string value DURING serialization (a JSON replacer sees raw code
+// units before they're escaped — a post-stringify regex can't, the escapes are text).
+const stripSurrogates = (v) =>
+  typeof v === 'string' ? v.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '') : v;
+
 export async function putDay(day) {
-  // Strip lone UTF-16 surrogates (e.g. an emoji cut in half by a slice) — they
-  // serialize to invalid UTF-8 and Supabase rejects the write with PGRST102.
-  const body = JSON.stringify([{ date: day.date, payload: day, updated_at: new Date().toISOString() }])
-    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
   await supa('monitor_days', {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates' },
-    body,
+    body: JSON.stringify([{ date: day.date, payload: day, updated_at: new Date().toISOString() }], (k, v) => stripSurrogates(v)),
   });
 }
 
