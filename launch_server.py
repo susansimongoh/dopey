@@ -407,10 +407,12 @@ def fetch_youtube(handles, cutoff, errors):
 # Editable per-project via "topic_terms" in data/keywords.json.
 SPS_CORE_TERMS = [
     'prison', 'sps', 'changi', 'death penalt', 'death row', 'capital punishment',
-    'execution', 'executed', 'gallows', 'yellow ribbon', 'rehabilitat', 'ex-offender',
-    'reintegrat', 'inmate', 'remand', 'parole', 'incarcerat', 'correctional',
-    'captain of lives', 'drug traffick', 'cnb', 'narcotics', 'anti-death',
-    'second chance', 'halfway house', 'desistor', 'maximum security', 'prisoner',
+    'execution', 'executed', 'gallows', 'hanged', 'hanging', 'noose', 'clemency',
+    'death sentence', 'sentenced to death', 'mandatory death', 'drug mule', 'caning',
+    'yellow ribbon', 'rehabilitat', 'ex-offender', 'reintegrat', 'inmate', 'remand',
+    'parole', 'incarcerat', 'correctional', 'captain of lives', 'drug traffick',
+    'cnb', 'narcotics', 'anti-death', 'second chance', 'halfway house', 'desistor',
+    'maximum security', 'prisoner', 'yrsg',
 ]
 
 

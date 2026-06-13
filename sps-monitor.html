@@ -829,8 +829,8 @@ async function doSocialFetch(force) {
   try {
     const baseline = S.day.social_fetched_at || null;
     const res = await api('/api/fetch-social', { date: S.date, force: !!force });
-    if (res.__accepted) {                       // cloud background job → poll (slow)
-      S.day = await pollDay(S.date, 'social_fetched_at', baseline, 360000);
+    if (res.__accepted) {                       // cloud background job → poll (slow: many accounts)
+      S.day = await pollDay(S.date, 'social_fetched_at', baseline, 780000);
     } else {
       if (!res.ok) throw new Error(res.error);
       S.day = res.day;

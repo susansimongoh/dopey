@@ -94,10 +94,12 @@ const blocks = (xml, name) => xml.match(new RegExp(`<${name}[^>]*>[\\s\\S]*?</${
 // ── relevance ────────────────────────────────────────────────────────────
 const SPS_CORE_TERMS = [
   'prison', 'sps', 'changi', 'death penalt', 'death row', 'capital punishment',
-  'execution', 'executed', 'gallows', 'yellow ribbon', 'rehabilitat', 'ex-offender',
-  'reintegrat', 'inmate', 'remand', 'parole', 'incarcerat', 'correctional',
-  'captain of lives', 'drug traffick', 'cnb', 'narcotics', 'anti-death',
-  'second chance', 'halfway house', 'desistor', 'maximum security', 'prisoner',
+  'execution', 'executed', 'gallows', 'hanged', 'hanging', 'noose', 'clemency',
+  'death sentence', 'sentenced to death', 'mandatory death', 'drug mule', 'caning',
+  'yellow ribbon', 'rehabilitat', 'ex-offender', 'reintegrat', 'inmate', 'remand',
+  'parole', 'incarcerat', 'correctional', 'captain of lives', 'drug traffick',
+  'cnb', 'narcotics', 'anti-death', 'second chance', 'halfway house', 'desistor',
+  'maximum security', 'prisoner', 'yrsg',
 ];
 function topicTerms(cfg) {
   const t = new Set((cfg.topic_terms || SPS_CORE_TERMS).map((x) => x.toLowerCase()));
