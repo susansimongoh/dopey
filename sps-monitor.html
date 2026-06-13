@@ -507,7 +507,6 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
   <div class="rail-foot">
     <span class="rail-who" id="rail-who"></span>
     <button class="rail-btn editor-only" onclick="openKeywords()">⌕ Search keywords</button>
-    <button class="rail-btn admin-only" onclick="openUsers()">⚇ Manage users</button>
     <button class="rail-btn" onclick="signOut()">⎋ Sign out</button>
   </div>
 </aside>
@@ -527,6 +526,7 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
       <div class="mast-actions">
         <button class="btn editor-only" id="btn-fetch" onclick="doFetch(false)">⚡ Fetch news</button>
         <button class="btn hidden editor-only" id="btn-social" onclick="doSocialFetch(false)">🛰 Social sweep</button>
+        <button class="btn admin-only" onclick="openUsers()">⚇ Manage users</button>
         <button class="btn" onclick="openReportModal()" title="Report PDF">🖨</button>
       </div>
     </div>
