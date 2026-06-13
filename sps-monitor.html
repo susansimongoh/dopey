@@ -483,7 +483,6 @@ button { font-family: inherit; }
     <!-- STORIES -->
     <section id="tab-stories">
       <div class="toolbar">
-        <button class="btn btn-sm btn-ink" onclick="generateStories()">✨ Auto-generate from clips</button>
         <button class="btn btn-sm" onclick="openStoryModal()">+ Add story</button>
         <span class="spacer"></span>
         <button class="btn btn-sm btn-ghost" onclick="openReportModal()">⚙ Report header</button>
@@ -491,7 +490,7 @@ button { font-family: inherit; }
       <div id="stories-list"></div>
       <div id="stories-empty" class="empty hidden">
         <div class="big">No stories yet.</div>
-        <p>Collect clips, then hit <b>✨ Auto-generate from clips</b> — or add one manually.</p>
+        <p>Stories write themselves from clips automatically. Add clips via <b>Fetch news</b> or <b>Re-sweep socials</b>, or add a story manually.</p>
       </div>
     </section>
 
@@ -787,15 +786,14 @@ function renderLedger() {
     const ds = `${y}-${pad2(m + 1)}-${pad2(d)}`;
     const entry = byDate[ds];
     const future = ds > today;
-    const hasData = entry && ((entry.clips || 0) || (entry.stories || 0) || entry.fetched_at);
+    const hasStories = entry && (entry.stories || 0) > 0;
     const cls = ['cal-cell'];
     if (future) cls.push('future');
-    if (hasData) cls.push('has-data');
+    if (hasStories) cls.push('has-data');
     if (ds === today) cls.push('today');
     if (ds === S.date) cls.push('selected');
-    // red dot = clips collected but no story written yet (needs a writeup)
-    const pending = entry && (entry.clips || 0) > 0 && (entry.stories || 0) === 0;
-    const dot = hasData ? `<span class="cal-dot ${pending ? 'new' : ''}"></span>` : '';
+    // green dot = this day has stories; no dot otherwise
+    const dot = hasStories ? `<span class="cal-dot"></span>` : '';
     const onclick = future ? '' : ` onclick="openDay('${ds}')"`;
     cells += `<button class="${cls.join(' ')}"${onclick}>${d}${dot}</button>`;
   }
@@ -832,6 +830,9 @@ async function openDay(date, opts = {}) {
 
   // Auto-fetch: only for today, only if never fetched (cached forever after)
   if (!opts.noFetch && date === today && !S.day.fetched_at && S.apiOk) doFetch(false, true);
+  // Auto-generate any missing stories for this day's clips (idempotent: skips
+  // clusters already storied, so it's free when everything's already written up).
+  else if (S.apiOk && (S.day.clips || []).length) generateStories(true);
 }
 
 function renderMasthead() {
@@ -1002,7 +1003,14 @@ async function generateStories(silent) {
     });
     made++;
   });
-  if (made) persist();
+  if (made) {
+    persist();
+    // reflect the new story count on the calendar dot immediately (no round-trip)
+    const e = S.days.find(d => d.date === S.date);
+    if (e) e.stories = S.day.stories.length;
+    else S.days.push({ date: S.date, clips: (S.day.clips || []).length, stories: S.day.stories.length, fetched_at: S.day.fetched_at });
+    renderLedger();
+  }
   renderStories(); badges();
   if (!silent) toast(made ? `Generated ${made} story draft${made > 1 ? 's' : ''} from clips. Edit as needed.` : 'All clips already have stories.');
   return made;
@@ -1122,6 +1130,7 @@ function saveClip() {
     S.day.clips.push(c);
   }
   closeModal('clip-modal'); persist(); renderClips(); badges();
+  generateStories(true);   // a manually added/edited clip drafts its story automatically
 }
 
 function delClip(id) {
