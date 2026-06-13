@@ -61,6 +61,52 @@ export async function putWatchlist(cfg) {
   });
 }
 
+// ── Auth: users + roles ──────────────────────────────────────────────────
+// Roles: 'tmg_admin' (everything incl. user management), 'tmg_user' (edit
+// sources/keywords/clips/stories, no user mgmt), 'client' (view only).
+// Users live in monitor_config key='users' as [{email,name,role,hash}]. The
+// password hash is sha256(email:password:PEPPER) where PEPPER = ADMIN_TOKEN
+// (server-only) — so even if the hash list leaks via the anon key it can't be
+// brute-forced without the pepper. Session tokens are HMAC-signed (same secret).
+const PEPPER = () => Netlify.env.get('ADMIN_TOKEN') || 'tmg-pepper';
+const enc = (s) => new TextEncoder().encode(s);
+const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+
+export async function hashPassword(email, password) {
+  const d = await crypto.subtle.digest('SHA-256', enc(`${(email || '').toLowerCase()}:${password}:${PEPPER()}`));
+  return hex(d);
+}
+async function hmacHex(payload) {
+  const key = await crypto.subtle.importKey('raw', enc(PEPPER()), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return hex(await crypto.subtle.sign('HMAC', key, enc(payload)));
+}
+export async function makeToken(email, role) {
+  const payload = `${(email || '').toLowerCase()}|${role}`;
+  return Buffer.from(payload).toString('base64url') + '.' + (await hmacHex(payload));
+}
+export async function verifyToken(token) {
+  if (!token || !token.includes('.')) return null;
+  const [b64, sig] = token.split('.');
+  let payload; try { payload = Buffer.from(b64, 'base64url').toString(); } catch { return null; }
+  if ((await hmacHex(payload)) !== sig) return null;
+  const [email, role] = payload.split('|');
+  return { email, role };
+}
+export async function getUsers() {
+  const rows = await supa(`monitor_config?key=eq.users&select=value`);
+  return (rows && rows[0] && rows[0].value) || [];
+}
+export async function putUsers(list) {
+  await supa('monitor_config', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates' },
+    body: JSON.stringify([{ key: 'users', value: list, updated_at: new Date().toISOString() }]),
+  });
+}
+export async function findUser(email) {
+  return (await getUsers()).find((x) => x.email.toLowerCase() === (email || '').toLowerCase()) || null;
+}
+
 export function freshDay(date) {
   return {
     date, fetched_at: null, social_fetched_at: null,

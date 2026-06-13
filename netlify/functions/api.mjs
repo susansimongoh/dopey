@@ -1,6 +1,7 @@
 // Synchronous API: fast Supabase-backed operations.
 // Heavy fetching lives in the *-background functions.
-import { getDay, putDay, listDays, getWatchlist, putWatchlist, ogImage, summarizeItems } from '../lib/sps.mjs';
+import { getDay, putDay, listDays, getWatchlist, putWatchlist, ogImage, summarizeItems,
+  hashPassword, makeToken, verifyToken, getUsers, putUsers, findUser } from '../lib/sps.mjs';
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -15,13 +16,40 @@ export default async (req) => {
     }
     if (req.method === 'POST' && path === '/api/login') {
       const { email, password } = await req.json();
-      const okEmail = (Netlify.env.get('ADMIN_EMAIL') || '').trim().toLowerCase();
-      const okPass = Netlify.env.get('ADMIN_PASSWORD') || '';
-      const token = Netlify.env.get('ADMIN_TOKEN') || okPass;
-      if (!okPass) return json({ ok: false, error: 'Admin login not configured.' }, 503);
-      const emailOk = !okEmail || (email || '').trim().toLowerCase() === okEmail;
-      if (emailOk && password === okPass) return json({ ok: true, token });
-      return json({ ok: false, error: 'Invalid email or password.' }, 401);
+      const u = await findUser(email);
+      if (!u || !u.hash) return json({ ok: false, error: 'Invalid email or password.' }, 401);
+      if ((await hashPassword(email, password)) !== u.hash) return json({ ok: false, error: 'Invalid email or password.' }, 401);
+      const token = await makeToken(u.email, u.role);
+      return json({ ok: true, token, role: u.role, email: u.email, name: u.name || '' });
+    }
+    if (path === '/api/users') {
+      // user management — TMG admin only
+      const auth = await verifyToken(req.headers.get('x-admin-token'));
+      if (!auth || auth.role !== 'tmg_admin') return json({ ok: false, error: 'Forbidden' }, 403);
+      if (req.method === 'GET') {
+        const list = await getUsers();
+        return json({ ok: true, users: list.map((x) => ({ email: x.email, name: x.name || '', role: x.role })) });
+      }
+      if (req.method === 'POST') {
+        const { action, email, name, role, password } = await req.json();
+        const list = await getUsers();
+        const i = list.findIndex((x) => x.email.toLowerCase() === (email || '').toLowerCase());
+        if (action === 'delete') {
+          if (email.toLowerCase() === auth.email.toLowerCase()) return json({ ok: false, error: "You can't delete your own account." }, 400);
+          await putUsers(list.filter((x) => x.email.toLowerCase() !== (email || '').toLowerCase()));
+          return json({ ok: true });
+        }
+        if (!email || !role) return json({ ok: false, error: 'Email and role are required.' }, 400);
+        if (!['tmg_admin', 'tmg_user', 'client'].includes(role)) return json({ ok: false, error: 'Invalid role.' }, 400);
+        const rec = i >= 0 ? { ...list[i] } : { email: email.toLowerCase() };
+        rec.name = (name ?? rec.name) || '';
+        rec.role = role;
+        if (password) rec.hash = await hashPassword(email, password);
+        if (i < 0 && !rec.hash) return json({ ok: false, error: 'A password is required for a new user.' }, 400);
+        if (i >= 0) list[i] = rec; else list.push(rec);
+        await putUsers(list);
+        return json({ ok: true });
+      }
     }
     if (req.method === 'GET' && path === '/api/days') {
       return json(await listDays());
@@ -65,5 +93,5 @@ export default async (req) => {
 };
 
 export const config = {
-  path: ['/api/status', '/api/login', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/snap', '/api/summarize'],
+  path: ['/api/status', '/api/login', '/api/users', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/snap', '/api/summarize'],
 };
