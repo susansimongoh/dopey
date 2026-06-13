@@ -250,7 +250,18 @@ function topicTerms(cfg) {
   for (const kw of cfg.keywords || []) t.add(kw.q.toLowerCase());
   return t;
 }
-const relevant = (text, terms) => { const low = (text || '').toLowerCase(); for (const t of terms) if (low.includes(t)) return true; return false; };
+// Word-boundary match: the term must START at a word boundary (it may still be a
+// prefix of a longer word, e.g. 'rehabilitat' → 'rehabilitation', 'death penalt'
+// → 'death penalty'). This stops substring false positives like 'hanging' inside
+// "changing" or 'hanged' inside "changed".
+const relevant = (text, terms) => {
+  const low = (text || '').toLowerCase();
+  for (const t of terms) {
+    const re = new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    if (re.test(low)) return true;
+  }
+  return false;
+};
 
 // Convert a fetched item to a clip (the evidence-log shape used everywhere).
 function itemToClip(it) {
@@ -280,11 +291,28 @@ export function mergeClips(day, results, cfg) {
     // Outlet RSS items are trusted by SOURCE (a monitored SG/MY outlet), so they
     // skip the keyword gate but STILL must pass the SPS relevance gate on the title.
     if (!it.outlet && !valid.has(it.kw)) continue;
-    if (!relevant(it.title, terms)) continue;
+    // SPS/YRSG own posts and CARE-partner posts are intrinsically in scope (their
+    // own activity); everyone else (other accounts + news) must be SPS-relevant.
+    const exempt = ownOrg(it.kw) || ownOrg(it.pub) || isCarePartner(it.kw) || isCarePartner(it.pub);
+    if (!exempt && !relevant(it.title, terms)) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
   }
   day.clips.sort((a, b) => (b.published || b.date || '').localeCompare(a.published || a.date || ''));
+}
+
+// Remove already-stored AUTO-fetched clips that no longer pass the gate (used to
+// clean up clips added before a relevance fix). Manually-added clips (no `src`)
+// are always kept. Own/CARE posts are exempt, same as mergeClips.
+export function pruneClips(day, cfg) {
+  const terms = topicTerms(cfg);
+  const before = (day.clips || []).length;
+  day.clips = (day.clips || []).filter((c) => {
+    if (!c.src) return true;   // manually added → keep
+    if (ownOrg(c.kw) || ownOrg(c.pub) || isCarePartner(c.kw) || isCarePartner(c.pub)) return true;
+    return relevant(c.subject, terms);
+  });
+  return before - (day.clips || []).length;
 }
 
 // ── news / reddit / youtube fetchers ─────────────────────────────────────

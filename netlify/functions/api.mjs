@@ -1,7 +1,7 @@
 // Synchronous API: fast Supabase-backed operations.
 // Heavy fetching lives in the *-background functions.
 import { getDay, putDay, listDays, getWatchlist, putWatchlist, ogImage, summarizeItems,
-  hashPassword, makeToken, verifyToken, getUsers, putUsers, findUser, rebuildStories } from '../lib/sps.mjs';
+  hashPassword, makeToken, verifyToken, getUsers, putUsers, findUser, rebuildStories, pruneClips, getWatchlist as _gw } from '../lib/sps.mjs';
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -79,10 +79,11 @@ export default async (req) => {
       if (!date) return json({ ok: false, error: 'date required' }, 400);
       const day = await getDay(date);
       if (!day || !(day.clips || []).length) return json({ ok: true, date, stories: 0, note: 'no clips' });
+      const pruned = pruneClips(day, await _gw());   // drop clips that no longer pass the relevance gate
       const updated = await rebuildStories(day);
       await putDay(updated);
       const stories = (updated.stories || []);
-      return json({ ok: true, date, stories: stories.length, fallbacks: stories.filter((s) => s.llm === false).length });
+      return json({ ok: true, date, pruned, clips: (updated.clips || []).length, stories: stories.length, fallbacks: stories.filter((s) => s.llm === false).length });
     }
     if (req.method === 'POST' && path === '/api/summarize') {
       const { items } = await req.json();
