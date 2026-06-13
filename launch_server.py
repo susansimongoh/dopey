@@ -428,22 +428,15 @@ def merge_clips(day, results, cfg):
         valid.update('@' + h for h in handles)
     terms = sps_topic_terms(cfg)
 
-    def title_key(s):
-        return ' '.join(''.join(ch if ch.isalnum() else ' ' for ch in (s or '').lower()).split())[:90]
-
     day.setdefault('clips', [])
     day.setdefault('dismissed', [])
     have = {c.get('id') for c in day['clips']}
     have_links = {c.get('link') for c in day['clips'] if c.get('link')}
-    have_titles = {title_key(c.get('subject')) for c in day['clips'] if c.get('subject')}
     gone = set(day['dismissed'])
     for it in results:
         if it['id'] in have or it['id'] in gone:
             continue
-        if it.get('link') and it['link'] in have_links:          # same URL = dupe
-            continue
-        tk = title_key(it.get('title'))
-        if tk and tk in have_titles:                             # same headline = dupe
+        if it.get('link') and it['link'] in have_links:          # same URL = true duplicate
             continue
         if it.get('kw') not in valid:
             continue
@@ -452,8 +445,6 @@ def merge_clips(day, results, cfg):
         have.add(it['id'])
         if it.get('link'):
             have_links.add(it['link'])
-        if tk:
-            have_titles.add(tk)
         day['clips'].append(item_to_clip(it))
     day['clips'].sort(key=lambda c: (c.get('published') or c.get('date') or ''), reverse=True)
 

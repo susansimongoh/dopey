@@ -120,8 +120,6 @@ function itemToClip(it) {
 
 // Merge fetched results straight into day.clips: keep only on-watchlist,
 // SPS-relevant items; skip ones already clipped or previously deleted.
-const titleKey = (s) => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90);
-
 export function mergeClips(day, results, cfg) {
   const valid = new Set((cfg.keywords || []).map((k) => k.q));
   for (const hs of Object.values(cfg.accounts || {})) for (const h of hs) valid.add('@' + h);
@@ -130,16 +128,13 @@ export function mergeClips(day, results, cfg) {
   day.dismissed = day.dismissed || [];
   const have = new Set(day.clips.map((c) => c.id));
   const haveLinks = new Set(day.clips.map((c) => c.link).filter(Boolean));
-  const haveTitles = new Set(day.clips.map((c) => titleKey(c.subject)).filter(Boolean));
   const gone = new Set(day.dismissed);
   for (const it of results) {
     if (have.has(it.id) || gone.has(it.id)) continue;
-    if (it.link && haveLinks.has(it.link)) continue;          // same URL = dupe
-    const tk = titleKey(it.title);
-    if (tk && haveTitles.has(tk)) continue;                   // same headline = dupe
+    if (it.link && haveLinks.has(it.link)) continue;          // same URL = true duplicate
     if (!valid.has(it.kw)) continue;
     if (!relevant(it.title, terms)) continue;
-    have.add(it.id); if (it.link) haveLinks.add(it.link); if (tk) haveTitles.add(tk);
+    have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
   }
   day.clips.sort((a, b) => (b.published || b.date || '').localeCompare(a.published || a.date || ''));
@@ -381,7 +376,14 @@ export async function summarizeItems(items) {
 For each item below (a social media post or news article, sometimes several related clips of the same story), produce:
 - "headline": one concise line in sentence case. No emoji, hashtags, slang or quotation marks.
 - "summary": a neutral, third-person summary of 1 to 3 sentences in the style of an official media monitoring report. Begin by naming the publisher/account and what they did, e.g. "Prison Fellowship Singapore published a Facebook post inviting followers to its Prison Ministry Conference...". Summarise the substance and key facts (who/what/when). Do NOT copy the caption verbatim; strip emoji, hashtags and internet slang; do not editorialise or add opinion.
-Return ONLY a JSON array, one object per item, each with keys "key", "headline", "summary". Use the exact "key" given for each item.
+- "category": classify into EXACTLY ONE of these values:
+   "issues" = executions, the death penalty, death row, court cases or controversies that directly affect or criticise SPS, custody/treatment complaints, anti-death-penalty activism.
+   "daily_news" = general news about SPS, Changi Prison, the Ministry of Home Affairs prison matters, sentencing/court news involving imprisonment, operational prison news.
+   "yellow_ribbon" = anything by or about Yellow Ribbon Singapore (YRSG), the Yellow Ribbon Project, or its reintegration / second-chances programmes.
+   "care_network" = CARE Network partners and their activities (SANA, SACA, Prison Fellowship Singapore, Yellow Ribbon Fund, ISCOS, NeuGen, community partners).
+   "social_updates" = posts published by SPS's own official accounts (Singapore Prison Service).
+   "fyi" = minor or tangential mentions that do not fit the above.
+Return ONLY a JSON array, one object per item, each with keys "key", "headline", "summary", "category". Use the exact "key" given for each item.
 
 Items:
 ${JSON.stringify(items)}`;

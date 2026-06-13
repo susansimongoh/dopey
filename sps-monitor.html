@@ -344,6 +344,12 @@ button { font-family: inherit; }
 .cat-fyi { background: var(--paper-2); color: var(--muted); }
 
 /* ═══ STORIES ═══ */
+.sec-head { font-weight: 800; font-size: 20px; letter-spacing: -.03em; margin: 26px 0 6px; color: var(--ink); }
+.sec-head.sec-top { margin-top: 6px; }
+.sec-label { font-weight: 700; font-size: 13px; letter-spacing: .02em; text-transform: uppercase; color: var(--verm-deep); margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1.5px solid var(--line); }
+.sec-label.sub { margin-left: 2px; color: var(--ink-2); }
+.sec-note { font-style: italic; font-size: 12.5px; color: var(--muted); margin: -4px 0 10px; }
+.sec-empty { color: var(--muted); font-size: 13px; padding: 2px 0 8px; }
 .story-card {
   background: var(--card); border: 1px solid var(--line); border-radius: 20px;
   padding: 22px 26px; margin-bottom: 14px; animation: rise .8s var(--ease) both;
@@ -519,12 +525,12 @@ button { font-family: inherit; }
       <div><label class="f-label">Date</label><input class="f-input" id="cm-date" type="date"></div>
       <div><label class="f-label">Category</label>
         <select class="f-select" id="cm-cat">
+          <option value="issues">Issues</option>
           <option value="daily_news">Daily News</option>
           <option value="yellow_ribbon">Yellow Ribbon News</option>
-          <option value="care_network">CARE Network</option>
+          <option value="care_network">CARE Network and Community Partner-Related News</option>
           <option value="social_updates">Social Media Updates</option>
-          <option value="issues">Issues Monitoring</option>
-          <option value="fyi">FYI</option>
+          <option value="fyi">FYI News</option>
         </select>
       </div>
     </div>
@@ -556,11 +562,11 @@ button { font-family: inherit; }
     <h3 id="story-modal-title">Add story</h3>
     <label class="f-label">Category</label>
     <select class="f-select" id="sm-cat">
+      <option value="issues">Issues (News Highlights)</option>
       <option value="daily_news">Daily News</option>
       <option value="yellow_ribbon">Yellow Ribbon News</option>
-      <option value="care_network">CARE Network & Community Partners</option>
-      <option value="social_updates">Social Media Updates · SPS</option>
-      <option value="issues">Issues Monitoring</option>
+      <option value="care_network">CARE Network and Community Partner-Related News</option>
+      <option value="social_updates">Social Media Updates</option>
       <option value="fyi">FYI News</option>
     </select>
     <label class="f-label">Headline</label>
@@ -640,18 +646,12 @@ button { font-family: inherit; }
   <div class="modal modal-lg">
     <h3>Export report PDF</h3>
     <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
-      The PDF includes this day's <b>stories</b> (the summaries report) followed by the <b>clips log</b> with screenshots. Set the report header below.
+      The PDF lays out every section (News Highlights → Issues, Daily News, Yellow Ribbon News, CARE Network, Social Media Updates, FYI News) with this day's stories, then the clips log with screenshots.
     </p>
     <div class="f-row">
       <div><label class="f-label">Report number</label><input class="f-input" id="cfg-num" placeholder="e.g. 101/2026"></div>
       <div><label class="f-label">Date / range heading</label><input class="f-input" id="cfg-date" placeholder="Friday, 13 June 2026"></div>
     </div>
-    <label class="f-label">News highlights</label>
-    <textarea class="f-area" id="cfg-highlights"></textarea>
-    <label class="f-label">Issues monitoring (fallback if no Issues stories)</label>
-    <textarea class="f-area" id="cfg-issues"></textarea>
-    <label class="f-label">FYI news (fallback if no FYI stories)</label>
-    <textarea class="f-area" id="cfg-fyi"></textarea>
     <div class="m-foot">
       <button class="btn btn-ghost" onclick="closeModal('report-modal')">Cancel</button>
       <button class="btn" onclick="saveReportCfg(); copyReport()">Copy as text</button>
@@ -665,10 +665,21 @@ button { font-family: inherit; }
 <script>
 /* ════════════════════ STATE ════════════════════ */
 const CATS = {
-  daily_news: 'Daily News', yellow_ribbon: 'Yellow Ribbon News',
-  care_network: 'CARE Network & Community Partner-Related News',
-  social_updates: 'Social Media Updates', issues: 'Issues Monitoring', fyi: 'FYI News',
+  issues: 'Issues', daily_news: 'Daily News', yellow_ribbon: 'Yellow Ribbon News',
+  care_network: 'CARE Network and Community Partner-Related News',
+  social_updates: 'Social Media Updates', fyi: 'FYI News',
 };
+// Fixed report structure, always shown (with '-' when empty). News Highlights
+// is a top section containing the Issues sub-section; the rest are top-level.
+const REPORT_SECTIONS = [
+  { key: 'issues', label: 'Issues', parent: 'News Highlights' },
+  { key: 'daily_news', label: 'Daily News' },
+  { key: 'yellow_ribbon', label: 'Yellow Ribbon News' },
+  { key: 'care_network', label: 'CARE Network and Community Partner-Related News' },
+  { key: 'social_updates', label: 'Social Media Updates', note: 'Singapore Prison Service' },
+  { key: 'fyi', label: 'FYI News' },
+];
+const CAT_KEYS = REPORT_SECTIONS.map(s => s.key);
 const TR_LABEL = { very_high: 'very high', high: 'high', moderate: 'moderate', low: 'low', very_low: 'very low' };
 
 const S = {
@@ -990,8 +1001,13 @@ async function generateStories(silent) {
     const summary = (sum && sum.summary) ? sum.summary : capt;
     if (!hl) return;
 
-    const catCount = {}; group.forEach(c => { catCount[c.cat] = (catCount[c.cat] || 0) + 1; });
-    const cat = Object.entries(catCount).sort((a, b) => b[1] - a[1])[0][0];
+    // category: prefer the LLM's classification, fall back to the clip's category
+    let cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : null;
+    if (!cat) {
+      const catCount = {}; group.forEach(c => { catCount[c.cat] = (catCount[c.cat] || 0) + 1; });
+      cat = Object.entries(catCount).sort((a, b) => b[1] - a[1])[0][0];
+      if (!CAT_KEYS.includes(cat)) cat = 'daily_news';
+    }
     const reported = uniq(group.filter(c => !c.plat).map(c => c.pub)).join(', ');
     const published = uniq(group.filter(c => c.plat).map(c => `${c.pub} (${c.plat})`)).join(', ');
     const tr = group.map(c => c.traction).filter(Boolean).sort((a, b) => TR_RANK[b] - TR_RANK[a])[0] || '';
@@ -1022,10 +1038,7 @@ function openReportModal() {
   el('report-modal').classList.remove('hidden');
 }
 function saveReportCfg() {
-  S.day.cfg = {
-    num: el('cfg-num').value.trim(), date: el('cfg-date').value.trim(),
-    highlights: el('cfg-highlights').value, issues: el('cfg-issues').value, fyi: el('cfg-fyi').value,
-  };
+  S.day.cfg = { ...(S.day.cfg || {}), num: el('cfg-num').value.trim(), date: el('cfg-date').value.trim() };
   persist();
   closeModal('report-modal');
 }
@@ -1155,22 +1168,17 @@ function storyFromClip(id) {
 /* ════════════════════ STORIES ════════════════════ */
 function tractionLine(s) {
   const parts = [];
-  if (s.trInt && s.trCom) parts.push(`To date, traction is ${TR_LABEL[s.trInt]} for interactions and ${TR_LABEL[s.trCom]} for comments across all platforms.`);
-  else if (s.trInt || s.trCom) parts.push(`To date, traction is ${TR_LABEL[s.trInt || s.trCom]} for ${s.trInt ? 'interactions' : 'comments'}.`);
+  if (s.trInt && s.trCom && s.trInt !== s.trCom) parts.push(`To date, traction is ${TR_LABEL[s.trInt]} for interactions and ${TR_LABEL[s.trCom]} for comments across all platforms.`);
+  else if (s.trInt || s.trCom) parts.push(`To date, traction is ${TR_LABEL[s.trInt || s.trCom]} for both interactions and comments across all platforms.`);
+  else parts.push('To date, traction has not been assessed.');
   if (s.trNote) parts.push(s.trNote);
   return parts.join(' ');
 }
 
-function renderStories() {
-  const stories = S.day.stories || [];
-  el('stories-empty').classList.toggle('hidden', stories.length > 0);
-  el('stories-list').innerHTML = stories.map((s, idx) => `
-    <div class="story-card" style="animation-delay:${Math.min(idx * 30, 240)}ms">
+function storyCardHtml(s, idx) {
+  return `<div class="story-card" style="animation-delay:${Math.min(idx * 24, 200)}ms">
       <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
-        <div>
-          <span class="cat-tag cat-${esc(s.cat)}">${(CATS[s.cat] || s.cat).split(' &')[0].split(' and ')[0]}</span>
-          <div class="story-hl" style="margin-top:7px">${esc(s.hl)}</div>
-        </div>
+        <div class="story-hl">${esc(s.hl)}</div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="btn btn-sm btn-ghost" onclick="editStory('${esc(s.id)}')">Edit</button>
           <button class="btn btn-sm btn-ghost" style="color:#c0392b" onclick="delStory('${esc(s.id)}')">Delete</button>
@@ -1178,12 +1186,28 @@ function renderStories() {
       </div>
       <div class="story-sum">${esc(s.summary) || '<em>No summary yet</em>'}</div>
       <div class="story-meta">
-        ${s.reported ? `<div><b>Reported by:</b> ${esc(s.reported)}</div>` : ''}
+        <div><b>Reported by:</b> ${esc(s.reported) || '-'}</div>
         ${s.syndicated ? `<div style="padding-left:14px"><b>Syndicated by:</b> ${esc(s.syndicated)}</div>` : ''}
-        ${s.published ? `<div><b>Published on:</b> ${esc(s.published)}</div>` : ''}
-        ${tractionLine(s) ? `<div>${esc(tractionLine(s))}</div>` : ''}
+        <div><b>Published on:</b> ${esc(s.published) || '-'}</div>
+        <div>${esc(tractionLine(s))}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+}
+
+// Render stories grouped into the fixed report sections, always shown ('-' if empty).
+function renderStories() {
+  const stories = S.day.stories || [];
+  el('stories-empty').classList.add('hidden');     // we always show the section scaffold now
+  let html = '<div class="sec-head sec-top">News Highlights</div>';
+  let i = 0;
+  REPORT_SECTIONS.forEach(sec => {
+    const inSec = stories.filter(s => s.cat === sec.key);
+    const sub = sec.parent === 'News Highlights';
+    html += `<div class="sec-label ${sub ? 'sub' : ''}">${esc(sec.label)}</div>`;
+    if (sec.note) html += `<div class="sec-note">${esc(sec.note)}</div>`;
+    html += inSec.length ? inSec.map(s => storyCardHtml(s, i++)).join('') : '<div class="sec-empty">-</div>';
+  });
+  el('stories-list').innerHTML = html;
 }
 
 function openStoryModal(id) {
@@ -1231,9 +1255,6 @@ function delStory(id) {
 function fillCfgInputs() {
   el('cfg-num').value = S.day.cfg.num || '';
   el('cfg-date').value = S.day.cfg.date || prettyDate(S.date);
-  el('cfg-highlights').value = S.day.cfg.highlights || '';
-  el('cfg-issues').value = S.day.cfg.issues || '';
-  el('cfg-fyi').value = S.day.cfg.fyi || '';
 }
 
 function storyBlockHtml(s, i) {
@@ -1254,24 +1275,26 @@ function storyBlockHtml(s, i) {
 function reportHtml() {
   const cfg = S.day.cfg;
   const bar = t => `<div style="background:#16263d;color:#fff;font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:5px 10px;margin:0 0 12px">${t}</div>`;
+  const subbar = t => `<div style="color:#c0391b;font-weight:800;font-size:12px;margin:0 0 10px">${t}</div>`;
+  const empty = `<div style="color:#888;margin-bottom:18px">-</div>`;
   let h = `<div style="text-align:right;font-size:11px;font-weight:700;color:#555">${esc(cfg.num) || '___/2026'}</div>
     <div style="text-align:center;font-weight:900;font-size:15.5px;text-transform:uppercase;color:#16263d;letter-spacing:.4px;margin:6px 0 22px">Media Monitoring Report<br>${esc(cfg.date) || '[Date]'}</div>`;
-  h += `<div style="margin-bottom:24px">${bar('News Highlights')}<pre style="font-family:inherit;white-space:pre-wrap">${esc(cfg.highlights) || '1. XXX'}</pre></div>`;
+
+  // 1. News Highlights → (1.1) Issues
+  h += `<div style="margin-bottom:20px">${bar('News Highlights')}`;
   const issues = (S.day.stories || []).filter(s => s.cat === 'issues');
-  h += `<div style="margin-bottom:24px"><div style="color:#c0391b;font-weight:800;font-size:12.5px;margin-bottom:10px">Issues Monitoring</div>`;
-  h += issues.length ? issues.map((s, i) => storyBlockHtml(s, i)).join('') : `<pre style="font-family:inherit;white-space:pre-wrap">${esc(cfg.issues) || '1. XXX'}</pre>`;
+  h += subbar('Issues');
+  h += issues.length ? issues.map((s, i) => storyBlockHtml(s, i)).join('') : empty;
   h += `</div>`;
-  ['daily_news', 'yellow_ribbon', 'care_network', 'social_updates'].forEach(cat => {
-    const st = (S.day.stories || []).filter(s => s.cat === cat);
-    if (!st.length) return;
-    h += `<div style="margin-bottom:24px">${bar(CATS[cat])}`;
-    if (cat === 'social_updates') h += `<div style="font-style:italic;margin-bottom:8px">Singapore Prison Service</div>`;
-    h += st.map((s, i) => storyBlockHtml(s, i)).join('') + `</div>`;
+
+  // 2-6. remaining top-level sections, always shown
+  REPORT_SECTIONS.filter(sec => !sec.parent).forEach(sec => {
+    const st = (S.day.stories || []).filter(s => s.cat === sec.key);
+    h += `<div style="margin-bottom:20px">${bar(sec.label)}`;
+    if (sec.note) h += `<div style="font-style:italic;margin-bottom:8px">${esc(sec.note)}</div>`;
+    h += st.length ? st.map((s, i) => storyBlockHtml(s, i)).join('') : empty;
+    h += `</div>`;
   });
-  const fyi = (S.day.stories || []).filter(s => s.cat === 'fyi');
-  h += `<div>${bar('FYI News')}`;
-  h += fyi.length ? fyi.map((s, i) => storyBlockHtml(s, i)).join('') : `<pre style="font-family:inherit;white-space:pre-wrap">${esc(cfg.fyi) || '1. XXX'}</pre>`;
-  h += `</div>`;
   return h;
 }
 
@@ -1309,17 +1332,15 @@ function storyTextBlock(s, i) {
 
 function copyReport() {
   const cfg = S.day.cfg;
-  let t = `${cfg.num}\n\nMEDIA MONITORING REPORT\n${cfg.date}\n\nNews Highlights\n\n${cfg.highlights || '1. XXX'}\n\nIssues Monitoring\n\n`;
-  const issues = (S.day.stories || []).filter(s => s.cat === 'issues');
-  t += issues.length ? issues.map(storyTextBlock).join('') : (cfg.issues || '1. XXX') + '\n\n';
-  ['daily_news', 'yellow_ribbon', 'care_network', 'social_updates'].forEach(cat => {
-    const st = (S.day.stories || []).filter(s => s.cat === cat);
-    if (!st.length) return;
-    t += `${CATS[cat]}\n\n` + (cat === 'social_updates' ? 'Singapore Prison Service\n\n' : '') + st.map(storyTextBlock).join('');
+  const stOf = c => (S.day.stories || []).filter(s => s.cat === c);
+  let t = `${cfg.num || ''}\n\nMEDIA MONITORING REPORT\n${cfg.date || ''}\n\nNEWS HIGHLIGHTS\n\nIssues\n\n`;
+  const issues = stOf('issues');
+  t += (issues.length ? issues.map(storyTextBlock).join('') : '-\n') + '\n';
+  REPORT_SECTIONS.filter(sec => !sec.parent).forEach(sec => {
+    t += `${sec.label.toUpperCase()}\n\n` + (sec.note ? sec.note + '\n\n' : '');
+    const st = stOf(sec.key);
+    t += (st.length ? st.map(storyTextBlock).join('') : '-\n') + '\n';
   });
-  t += `FYI News\n\n`;
-  const fyi = (S.day.stories || []).filter(s => s.cat === 'fyi');
-  t += fyi.length ? fyi.map(storyTextBlock).join('') : (cfg.fyi || '1. XXX');
   navigator.clipboard.writeText(t).then(() => toast('Report copied to clipboard.'));
 }
 
