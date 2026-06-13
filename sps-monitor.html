@@ -670,17 +670,20 @@ const CATS = {
 };
 const CAT_KEYS = ['issues', 'daily_news', 'yellow_ribbon', 'care_network', 'social_updates', 'fyi'];
 // Own official accounts → their posts go under "Social Media Updates" (split by org).
+// Normalise a handle OR display name to bare alphanumerics so FB page names
+// ("Singapore Prison Service") match handles ("singaporeprisonservice").
+function normHandle(s) { return (s || '').replace(/^@/, '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
 const SPS_OWN = ['singaporeprisonservice'];
 const YRSG_OWN = ['yellowribbonsg', 'yellowribbonsingapore'];
 // CARE Network partner accounts → always file under CARE Network.
 const CARE_PARTNERS = ['prisonfellowshipsg', 'prisonfellowshipsingapore', 'singaporeantinarcotics', 'saca', 'iscos', 'neugen'];
 function ownOrg(handle) {
-  const h = (handle || '').replace(/^@/, '').toLowerCase();
+  const h = normHandle(handle);
   if (SPS_OWN.includes(h)) return 'sps';
   if (YRSG_OWN.includes(h)) return 'yrsg';
   return null;
 }
-function isCarePartner(handle) { return CARE_PARTNERS.includes((handle || '').replace(/^@/, '').toLowerCase()); }
+function isCarePartner(handle) { return CARE_PARTNERS.includes(normHandle(handle)); }
 // The report layout, always shown daily (with '-' when a section is empty).
 function sectionSpec() {
   const all = S.day.stories || [];
