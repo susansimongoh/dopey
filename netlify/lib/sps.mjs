@@ -235,7 +235,9 @@ const blocks = (xml, name) => xml.match(new RegExp(`<${name}[^>]*>[\\s\\S]*?</${
 
 // ── relevance ────────────────────────────────────────────────────────────
 const SPS_CORE_TERMS = [
-  'prison', 'sps', 'changi', 'death penalt', 'death row', 'capital punishment',
+  // 'changi prison' not bare 'changi' — broad outlet feeds otherwise match Changi
+  // Airport / Pasir Ris-Changi / Changi General Hospital (the area, not the prison).
+  'prison', 'sps', 'changi prison', 'death penalt', 'death row', 'capital punishment',
   'execution', 'executed', 'gallows', 'hanged', 'hanging', 'noose', 'clemency',
   'death sentence', 'sentenced to death', 'mandatory death', 'drug mule', 'caning',
   'yellow ribbon', 'rehabilitat', 'ex-offender', 'reintegrat', 'inmate', 'remand',
