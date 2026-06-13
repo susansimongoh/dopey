@@ -78,31 +78,53 @@ button { font-family: inherit; }
 .rail-brand .client::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--verm); }
 
 .ledger-head {
-  padding: 14px 24px 10px; font-family: var(--mono); font-size: 8.5px;
+  padding: 14px 20px 8px; font-family: var(--mono); font-size: 8.5px;
   letter-spacing: 2.6px; text-transform: uppercase; color: var(--muted);
-  display: flex; justify-content: space-between; align-items: baseline;
+  display: flex; justify-content: space-between; align-items: center;
   border-top: 1px solid var(--rail-line);
 }
-.ledger { flex: 1; overflow-y: auto; padding: 2px 12px 16px; }
+.cal-nav {
+  background: none; border: none; cursor: pointer; color: var(--ink-2); font-size: 15px;
+  width: 22px; height: 22px; border-radius: 7px; line-height: 1; display: grid; place-items: center;
+  transition: background .3s var(--ease);
+}
+.cal-nav:hover { background: var(--rail-2); color: var(--ink); }
+.cal-title { font-family: var(--sans); font-size: 12px; font-weight: 700; letter-spacing: -.01em; text-transform: none; color: var(--ink); }
 
-.day-row {
-  width: 100%; text-align: left; background: none; border: none; color: inherit; cursor: pointer;
-  padding: 11px 13px; border-radius: 14px; margin-bottom: 2px;
-  display: block; transition: background .4s var(--ease), box-shadow .4s var(--ease), transform .4s var(--ease);
+.ledger { flex: 1; overflow-y: auto; padding: 4px 14px 14px; }
+.cal-dow { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 4px; }
+.cal-dow span { text-align: center; font-family: var(--mono); font-size: 8.5px; color: var(--muted); padding: 4px 0; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-cell {
+  position: relative; aspect-ratio: 1; border: none; background: none; cursor: pointer;
+  border-radius: 9px; font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--ink-2);
+  display: grid; place-items: center; transition: background .25s var(--ease), color .25s var(--ease), transform .25s var(--ease);
 }
-.day-row:hover { background: var(--rail-2); }
-.day-row.active {
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 22px -10px rgba(0,0,0,.14), inset 3px 0 0 var(--verm);
+.cal-cell.empty { visibility: hidden; }
+.cal-cell.future { color: #c4c4c8; cursor: default; }
+.cal-cell:not(.future):not(.selected):hover { background: var(--rail-2); transform: scale(1.05); }
+.cal-cell.has-data { color: var(--ink); font-weight: 700; }
+.cal-cell .cal-dot {
+  position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%; background: #2fb573;
 }
-.day-row .d-date { font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .6px; }
-.day-row .d-label { font-size: 11px; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 6px; font-weight: 500; }
-.day-row .d-counts { font-family: var(--mono); font-size: 9.5px; color: #a1a1a6; margin-top: 5px; display: flex; gap: 11px; }
-.day-row .d-counts b { color: var(--ink); font-weight: 600; }
+.cal-cell .cal-dot.new { background: var(--verm); }
+.cal-cell.today { box-shadow: inset 0 0 0 1.5px var(--verm); color: var(--verm); }
+.cal-cell.selected { background: var(--ink); color: #fff; font-weight: 700; box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }
+.cal-cell.selected .cal-dot { background: #fff; }
+
+.cal-sel {
+  margin-top: 14px; padding: 11px 13px; border-radius: 14px; background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 22px -10px rgba(0,0,0,.12);
+}
+.cal-sel .d-date { font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: .5px; }
+.cal-sel .d-label { font-size: 11px; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 6px; font-weight: 500; }
+.cal-sel .d-counts { font-family: var(--mono); font-size: 9.5px; color: #a1a1a6; margin-top: 5px; display: flex; gap: 11px; }
+.cal-sel .d-counts b { color: var(--ink); font-weight: 600; }
 .dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
 .dot.fetched { background: #2fb573; box-shadow: 0 0 6px rgba(47,181,115,.55); }
 .dot.pending { background: #d9a514; box-shadow: 0 0 6px rgba(217,165,20,.55); }
-.day-row .pill-new {
+.cal-sel .pill-new {
   font-family: var(--mono); font-size: 9px; background: var(--verm); color: #fff;
   padding: 1.5px 8px; border-radius: 99px; font-weight: 600;
 }
@@ -386,8 +408,16 @@ button { font-family: inherit; }
     <h1>The Monitor<em>.</em></h1>
     <span class="client">SPS INTEL DESK</span>
   </div>
-  <div class="ledger-head"><span>Day Ledger</span><span id="ledger-count"></span></div>
-  <div class="ledger" id="ledger"></div>
+  <div class="ledger-head">
+    <button class="cal-nav" onclick="calShift(-1)">‹</button>
+    <span class="cal-title" id="cal-title">—</span>
+    <button class="cal-nav" onclick="calShift(1)">›</button>
+  </div>
+  <div class="ledger">
+    <div class="cal-dow"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div class="cal-sel" id="cal-sel"></div>
+  </div>
   <div class="rail-foot">
     <button class="rail-btn" onclick="openKeywords()">⌕ Search keywords</button>
     <button class="rail-btn" onclick="exportDay()">↓ Export day (JSON)</button>
@@ -713,21 +743,63 @@ async function loadLedger() {
   renderLedger();
 }
 
+const pad2 = n => String(n).padStart(2, '0');
+
+function calShift(delta) {
+  if (!S.calYM) return;
+  let { y, m } = S.calYM;
+  m += delta;
+  if (m < 0) { m = 11; y--; }
+  if (m > 11) { m = 0; y++; }
+  // don't navigate past the current month (no archive in the future)
+  const t = new Date(localDate() + 'T12:00:00');
+  if (y > t.getFullYear() || (y === t.getFullYear() && m > t.getMonth())) return;
+  S.calYM = { y, m };
+  renderLedger();
+}
+
 function renderLedger() {
   const today = localDate();
-  const entries = [...S.days];
-  if (!entries.find(d => d.date === today)) entries.unshift({ date: today, clips: 0, stories: 0, inbox_new: 0, fetched_at: null });
-  el('ledger-count').textContent = entries.length + ' days';
-  el('ledger').innerHTML = entries.map(d => {
-    const dt = new Date(d.date + 'T12:00:00');
-    const label = d.date === today ? 'Today' : dt.toLocaleDateString('en-SG', { weekday: 'long' });
-    return `<button class="day-row ${d.date === S.date ? 'active' : ''}" onclick="openDay('${d.date}')">
+  const byDate = Object.fromEntries(S.days.map(d => [d.date, d]));
+  if (!byDate[today]) byDate[today] = { date: today, clips: 0, stories: 0, inbox_new: 0, fetched_at: null };
+
+  // default the visible month to the selected day's month (or today)
+  if (!S.calYM) { const base = new Date((S.date || today) + 'T12:00:00'); S.calYM = { y: base.getFullYear(), m: base.getMonth() }; }
+  const { y, m } = S.calYM;
+  el('cal-title').textContent = new Date(y, m, 1).toLocaleDateString('en-SG', { month: 'long', year: 'numeric' });
+
+  const firstDow = new Date(y, m, 1).getDay();
+  const days = new Date(y, m + 1, 0).getDate();
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += '<div class="cal-cell empty"></div>';
+  for (let d = 1; d <= days; d++) {
+    const ds = `${y}-${pad2(m + 1)}-${pad2(d)}`;
+    const entry = byDate[ds];
+    const future = ds > today;
+    const cls = ['cal-cell'];
+    if (future) cls.push('future');
+    if (entry) cls.push('has-data');
+    if (ds === today) cls.push('today');
+    if (ds === S.date) cls.push('selected');
+    const dot = entry ? `<span class="cal-dot ${entry.inbox_new ? 'new' : ''}"></span>` : '';
+    const onclick = future ? '' : ` onclick="openDay('${ds}')"`;
+    cells += `<button class="${cls.join(' ')}"${onclick}>${d}${dot}</button>`;
+  }
+  el('cal-grid').innerHTML = cells;
+
+  // selected-day summary card
+  const sel = byDate[S.date];
+  if (sel) {
+    const dt = new Date(S.date + 'T12:00:00');
+    const label = S.date === today ? 'Today' : dt.toLocaleDateString('en-SG', { weekday: 'long' });
+    el('cal-sel').innerHTML = `
       <div class="d-date">${dt.toLocaleDateString('en-SG', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}</div>
-      <div class="d-label"><span class="dot ${d.fetched_at ? 'fetched' : 'pending'}"></span>${label}
-        ${d.inbox_new ? `<span class="pill-new">${d.inbox_new} new</span>` : ''}</div>
-      <div class="d-counts"><span><b>${d.clips}</b> clips</span><span><b>${d.stories}</b> stories</span></div>
-    </button>`;
-  }).join('');
+      <div class="d-label"><span class="dot ${sel.fetched_at ? 'fetched' : 'pending'}"></span>${label}
+        ${sel.inbox_new ? `<span class="pill-new">${sel.inbox_new} new</span>` : ''}</div>
+      <div class="d-counts"><span><b>${sel.clips}</b> clips</span><span><b>${sel.stories}</b> stories</span></div>`;
+  } else {
+    el('cal-sel').innerHTML = '';
+  }
 }
 
 async function refreshLedgerCounts() {
@@ -738,6 +810,7 @@ async function refreshLedgerCounts() {
 /* ════════════════════ DAY LOADING ════════════════════ */
 async function openDay(date, opts = {}) {
   S.date = date;
+  const b = new Date(date + 'T12:00:00'); S.calYM = { y: b.getFullYear(), m: b.getMonth() };  // keep calendar on the open day's month
   let day = null;
   try { day = await api('/api/day/' + date); }
   catch (e) {
