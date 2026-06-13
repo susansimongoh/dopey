@@ -392,20 +392,27 @@ Return ONLY a JSON array, one object per item, each with keys "key", "headline",
 Items:
 ${JSON.stringify(items)}`;
   const body = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, responseMimeType: 'application/json' } };
+  // Transient: 429 (quota), 500/503 (overload) → retry with backoff, then fall to
+  // the next model. Anything else is a real error and stops immediately.
+  const TRANSIENT = new Set([429, 500, 503]);
+  const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
   let lastErr = 'no models tried';
   for (const model of GEMINI_MODELS) {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    });
-    if (r.ok) {
-      const data = await r.json();
-      let txt = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '[]';
-      txt = txt.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-      return JSON.parse(txt);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        let txt = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '[]';
+        txt = txt.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+        return JSON.parse(txt);
+      }
+      lastErr = 'Gemini ' + r.status + ' ' + (await r.text()).slice(0, 160);
+      if (!TRANSIENT.has(r.status)) throw new Error(lastErr);   // hard error → surface it
+      if (attempt < 2) await sleep(700 * (attempt + 1));   // backoff before retrying same model
     }
-    lastErr = 'Gemini ' + r.status + ' ' + (await r.text()).slice(0, 160);
-    // 429 = quota for this model → try the next; other errors → stop and report
-    if (r.status !== 429) break;
+    // exhausted retries on this model → next model (fresh quota / capacity)
   }
   throw new Error(lastErr);
 }
