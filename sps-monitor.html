@@ -966,24 +966,25 @@ async function generateStories(silent) {
   const todo = Object.entries(clusters).filter(([k]) => !done.has(k));
   if (!todo.length) { if (!silent) toast('All clips already have stories.'); return 0; }
 
-  // ask Gemini to rewrite each new cluster (one batched call)
-  let summaries = {};
+  // ask Gemini to rewrite each new cluster (one batched call). Map results by
+  // index (robust) with key as a backup, so an LLM key mismatch can't drop a summary.
+  const byIdx = {}; const byKey = {};
   try {
-    const items = todo.map(([k, group]) => ({
-      key: k,
+    const items = todo.map(([k, group], i) => ({
+      key: String(i),
       pub: uniq(group.map(c => c.pub)).join(', '),
       platforms: uniq(group.map(c => c.plat).filter(Boolean)).join(', '),
       texts: group.map(c => c.subject).filter(Boolean),
     }));
     const res = await api('/api/summarize', { items });
-    if (res.ok) (res.results || []).forEach(r => { summaries[r.key] = r; });
+    if (res.ok) (res.results || []).forEach((r, i) => { byIdx[i] = r; if (r && r.key != null) byKey[String(r.key)] = r; });
   } catch (e) { /* fall back to caption below */ }
 
   let made = 0;
-  todo.forEach(([k, group]) => {
+  todo.forEach(([k, group], idx) => {
     const rep = group.slice().sort((a, b) => (b.subject || '').length - (a.subject || '').length)[0];
     const capt = (rep.subject || '').trim();
-    const sum = summaries[k];
+    const sum = byKey[String(idx)] || byIdx[idx];
     const hl = (sum && sum.headline) ? sum.headline : (capt.length > 130 ? capt.slice(0, 130) + '…' : capt);
     const summary = (sum && sum.summary) ? sum.summary : capt;
     if (!hl) return;
