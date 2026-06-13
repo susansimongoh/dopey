@@ -426,6 +426,43 @@ button { font-family: inherit; }
 
 .hidden { display: none !important; }
 
+/* ═══ ROLE VISIBILITY (viewer vs admin) ═══ */
+body.viewer .admin-only { display: none !important; }
+body:not(.viewer) .viewer-only { display: none !important; }
+.rail-who { font-family: var(--mono); font-size: 9px; letter-spacing: .6px; color: var(--muted); padding: 0 12px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ═══ ADMIN SIGN-IN (Picard-style) ═══ */
+.login-overlay {
+  position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(120% 120% at 50% 40%, #15171c 0%, #0b0c0f 100%);
+  animation: fadein .4s var(--ease);
+}
+.login-card {
+  background: #fff; border-radius: 26px; width: 100%; max-width: 430px; margin: 20px;
+  padding: 44px 44px 40px; box-shadow: 0 50px 120px -30px rgba(0,0,0,.7);
+  display: flex; flex-direction: column; animation: pop .5s var(--ease);
+}
+.tmg-wordmark { display: flex; flex-direction: column; line-height: 1.18; font-weight: 600; font-size: 28px; letter-spacing: .18em; color: var(--ink); }
+.tmg-wordmark .red { color: #c41230; }
+.login-sub { color: var(--muted); font-size: 15px; margin: 18px 0 26px; letter-spacing: -.01em; }
+.login-input {
+  width: 100%; border: none; background: #eef1fb; border-radius: 12px; padding: 15px 17px;
+  font-size: 15px; font-family: var(--sans); color: var(--ink); margin-bottom: 12px;
+  transition: box-shadow .3s var(--ease), background .3s var(--ease);
+}
+.login-input:focus { outline: none; background: #e7ecfb; box-shadow: 0 0 0 3px rgba(0,113,227,.2); }
+.login-err { background: #fdecea; color: #c0392b; font-size: 13px; padding: 9px 13px; border-radius: 10px; margin-bottom: 12px; }
+.login-btn {
+  width: 100%; border: none; background: #c41230; color: #fff; font-weight: 700; font-size: 16px;
+  padding: 15px; border-radius: 12px; cursor: pointer; margin-top: 4px;
+  transition: background .25s var(--ease), transform .3s var(--ease);
+}
+.login-btn:hover { background: #a50f28; }
+.login-btn:active { transform: scale(.98); }
+.login-btn:disabled { opacity: .5; cursor: default; }
+.login-cancel { background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer; margin-top: 16px; padding: 6px; }
+.login-cancel:hover { color: var(--ink); }
+
 @media (max-width: 900px) {
   .rail { display: none; }
   .content, .masthead { padding-left: 18px; padding-right: 18px; }
@@ -435,7 +472,7 @@ button { font-family: inherit; }
 @media print { body * { visibility: hidden; } }
 </style>
 </head>
-<body>
+<body class="viewer">
 
 <!-- ═══ DAY LEDGER ═══ -->
 <aside class="rail">
@@ -454,7 +491,10 @@ button { font-family: inherit; }
     <div class="cal-grid" id="cal-grid"></div>
   </div>
   <div class="rail-foot">
-    <button class="rail-btn" onclick="openKeywords()">⌕ Search keywords</button>
+    <span class="rail-who admin-only" id="rail-who"></span>
+    <button class="rail-btn admin-only" onclick="openKeywords()">⌕ Search keywords</button>
+    <button class="rail-btn admin-only" onclick="signOut()">⎋ Sign out</button>
+    <button class="rail-btn viewer-only" onclick="openLogin()">⇲ Admin sign in</button>
   </div>
 </aside>
 
@@ -471,8 +511,8 @@ button { font-family: inherit; }
         </div>
       </div>
       <div class="mast-actions">
-        <button class="btn" id="btn-fetch" onclick="doFetch(false)">⚡ Fetch news</button>
-        <button class="btn hidden" id="btn-social" onclick="doSocialFetch(false)">🛰 Social sweep</button>
+        <button class="btn admin-only" id="btn-fetch" onclick="doFetch(false)">⚡ Fetch news</button>
+        <button class="btn hidden admin-only" id="btn-social" onclick="doSocialFetch(false)">🛰 Social sweep</button>
         <button class="btn" onclick="openReportModal()" title="Report PDF">🖨</button>
       </div>
     </div>
@@ -488,9 +528,9 @@ button { font-family: inherit; }
     <!-- STORIES -->
     <section id="tab-stories">
       <div class="toolbar">
-        <button class="btn btn-sm" onclick="openStoryModal()">+ Add story</button>
+        <button class="btn btn-sm admin-only" onclick="openStoryModal()">+ Add story</button>
         <span class="spacer"></span>
-        <button class="btn btn-sm btn-ghost" onclick="openReportModal()">⚙ Report header</button>
+        <button class="btn btn-sm btn-ghost admin-only" onclick="openReportModal()">⚙ Report header</button>
       </div>
       <div id="stories-list"></div>
       <div id="stories-empty" class="empty hidden">
@@ -502,7 +542,7 @@ button { font-family: inherit; }
     <!-- CLIPS -->
     <section id="tab-clips" class="hidden">
       <div class="toolbar">
-        <button class="btn btn-sm btn-ink" onclick="openClipModal()">+ Add clip manually</button>
+        <button class="btn btn-sm btn-ink admin-only" onclick="openClipModal()">+ Add clip manually</button>
         <span class="spacer"></span>
         <input class="search" id="clips-search" placeholder="filter…" oninput="renderClips()">
       </div>
@@ -514,6 +554,19 @@ button { font-family: inherit; }
     </section>
   </div>
 </main>
+
+<!-- ═══ ADMIN SIGN-IN ═══ -->
+<div class="login-overlay hidden" id="login-overlay">
+  <form class="login-card" onsubmit="doLogin(event)">
+    <div class="tmg-wordmark"><span>THAT</span><span class="red">MARKETING</span><span>GUY</span></div>
+    <p class="login-sub">Sign in to manage The Monitor.</p>
+    <input class="login-input" id="login-email" type="email" placeholder="Email" autocomplete="username" value="susan@thatmarketingguy.sg">
+    <input class="login-input" id="login-pass" type="password" placeholder="Password" autocomplete="current-password">
+    <div class="login-err hidden" id="login-err"></div>
+    <button class="login-btn" type="submit" id="login-btn">Sign in</button>
+    <button class="login-cancel" type="button" onclick="closeLogin()">Cancel</button>
+  </form>
+</div>
 
 <!-- ═══ CLIP MODAL ═══ -->
 <div class="overlay hidden" id="clip-modal">
@@ -738,12 +791,47 @@ function prettyDate(iso) {
 
 /* ════════════════════ API (graceful offline fallback) ════════════════════ */
 async function api(path, body) {
-  const opts = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {};
+  const tok = localStorage.getItem('sps-admin');
+  const headers = { 'Content-Type': 'application/json' };
+  if (tok) headers['x-admin-token'] = tok;
+  const opts = body ? { method: 'POST', headers, body: JSON.stringify(body) } : (tok ? { headers } : {});
   const r = await fetch(path, opts);
   if (!r.ok) throw new Error('HTTP ' + r.status);
   if (r.status === 202) return { __accepted: true };   // background function kicked off
   const txt = await r.text();
   return txt ? JSON.parse(txt) : { __accepted: true };
+}
+
+/* ════════════════════ AUTH (admin unlocks editing; default = view-only) ════════════════════ */
+function applyRole() {
+  S.admin = !!localStorage.getItem('sps-admin');
+  document.body.classList.toggle('viewer', !S.admin);
+  const who = el('rail-who'); if (who) who.textContent = S.admin ? (localStorage.getItem('sps-admin-email') || 'Signed in') : '';
+}
+function openLogin() {
+  el('login-err').classList.add('hidden'); el('login-pass').value = '';
+  el('login-overlay').classList.remove('hidden');
+  setTimeout(() => el('login-pass').focus(), 60);
+}
+function closeLogin() { el('login-overlay').classList.add('hidden'); }
+async function doLogin(ev) {
+  ev.preventDefault();
+  const email = el('login-email').value.trim(), password = el('login-pass').value;
+  const btn = el('login-btn'); btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const res = await api('/api/login', { email, password });
+    if (!(res && res.ok && res.token)) throw new Error((res && res.error) || 'Invalid email or password.');
+    localStorage.setItem('sps-admin', res.token);
+    localStorage.setItem('sps-admin-email', email);
+    closeLogin(); applyRole(); renderAll(); badges();
+    toast('Signed in — editing unlocked.');
+  } catch (e) {
+    const er = el('login-err'); er.textContent = e.message || 'Sign in failed.'; er.classList.remove('hidden');
+  } finally { btn.disabled = false; btn.textContent = 'Sign in'; }
+}
+function signOut() {
+  localStorage.removeItem('sps-admin'); localStorage.removeItem('sps-admin-email');
+  applyRole(); renderAll(); badges(); toast('Signed out — view-only mode.');
 }
 
 // Cloud fetches run as background functions (return 202). Poll the day until
@@ -860,6 +948,9 @@ async function openDay(date, opts = {}) {
 
   const today = localDate();
 
+  // Fetching and auto-generation are admin-only (they write to the cloud).
+  // Viewers just read whatever's already been published.
+  if (!S.admin) return;
   // Auto-fetch: only for today, only if never fetched (cached forever after)
   if (!opts.noFetch && date === today && !S.day.fetched_at && S.apiOk) doFetch(false, true);
   // Auto-generate any missing stories for this day's clips (idempotent: skips
@@ -1134,18 +1225,18 @@ function renderClips() {
   el('clips-empty').classList.toggle('hidden', clips.length > 0);
   el('clips-list').innerHTML = clips.map((c, idx) => `
     <div class="clip-row" style="animation-delay:${Math.min(idx * 25, 250)}ms">
-      <div class="clip-thumb" id="thumb-${esc(c.id)}" onclick="${c.shot ? `window.open('${esc(shotSrc(c))}','_blank')` : `snapClip('${esc(c.id)}')`}" title="${c.shot ? 'View hero shot' : 'Capture hero shot'}">
+      <div class="clip-thumb" id="thumb-${esc(c.id)}" onclick="${c.shot ? `window.open('${esc(shotSrc(c))}','_blank')` : (S.admin ? `snapClip('${esc(c.id)}')` : '')}" title="${c.shot ? 'View hero shot' : (S.admin ? 'Capture hero shot' : '')}">
         ${c.shot ? `<img src="${esc(shotSrc(c))}" referrerpolicy="no-referrer" onerror="this.parentNode.innerHTML='<span class=ph>📷</span>'">` : '<span class="ph">📷</span>'}
       </div>
       <div class="clip-body">
         <div class="clip-pub">${esc(c.pub)} ${c.plat ? `<span class="plat-pill">${esc(c.plat)}</span>` : ''} <span class="cat-tag cat-${esc(c.cat)}">${(CATS[c.cat] || c.cat).split(' &')[0].split(' and ')[0]}</span> <span class="clip-date" style="width:auto">${esc(c.date)}</span></div>
       <div class="clip-subj">${c.link ? `<a href="${esc(c.link)}" target="_blank" rel="noopener">${esc(c.subject)}</a>` : esc(c.subject)}</div>
       </div>
-      <div class="ib-actions">
+      ${S.admin ? `<div class="ib-actions">
         <button class="btn btn-sm" onclick="storyFromClip('${esc(c.id)}')">→ Story</button>
         <button class="btn btn-sm btn-ghost" onclick="editClip('${esc(c.id)}')">Edit</button>
         <button class="btn btn-sm btn-ghost" style="color:#c0392b" onclick="delClip('${esc(c.id)}')">Delete</button>
-      </div>
+      </div>` : ''}
     </div>`).join('');
 }
 
@@ -1294,10 +1385,10 @@ function storyCardHtml(s, idx) {
   return `<div class="story-card" style="animation-delay:${Math.min(idx * 24, 200)}ms">
       <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
         <div class="story-hl">${esc(s.hl)}</div>
-        <div style="display:flex;gap:6px;flex-shrink:0">
+        ${S.admin ? `<div style="display:flex;gap:6px;flex-shrink:0">
           <button class="btn btn-sm btn-ghost" onclick="editStory('${esc(s.id)}')">Edit</button>
           <button class="btn btn-sm btn-ghost" style="color:#c0392b" onclick="delStory('${esc(s.id)}')">Delete</button>
-        </div>
+        </div>` : ''}
       </div>
       <div class="story-sum">${esc(s.summary) || '<em>No summary yet</em>'}</div>
       <div class="story-meta">
@@ -1592,6 +1683,7 @@ function toast(msg, actionLabel, actionFn) {
 
 /* ════════════════════ BOOT ════════════════════ */
 (async function boot() {
+  applyRole();   // set viewer/admin before anything renders
   try { S.status = await api('/api/status'); } catch (e) { S.status = { apify: false, supabase: false }; }
   el('btn-social').classList.toggle('hidden', !S.status.apify);
   await loadLedger();

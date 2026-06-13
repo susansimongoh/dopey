@@ -13,6 +13,16 @@ export default async (req) => {
     if (req.method === 'GET' && path === '/api/status') {
       return json({ apify: !!Netlify.env.get('APIFY_TOKEN'), supabase: !!Netlify.env.get('SUPABASE_URL'), mode: 'cloud' });
     }
+    if (req.method === 'POST' && path === '/api/login') {
+      const { email, password } = await req.json();
+      const okEmail = (Netlify.env.get('ADMIN_EMAIL') || '').trim().toLowerCase();
+      const okPass = Netlify.env.get('ADMIN_PASSWORD') || '';
+      const token = Netlify.env.get('ADMIN_TOKEN') || okPass;
+      if (!okPass) return json({ ok: false, error: 'Admin login not configured.' }, 503);
+      const emailOk = !okEmail || (email || '').trim().toLowerCase() === okEmail;
+      if (emailOk && password === okPass) return json({ ok: true, token });
+      return json({ ok: false, error: 'Invalid email or password.' }, 401);
+    }
     if (req.method === 'GET' && path === '/api/days') {
       return json(await listDays());
     }
@@ -55,5 +65,5 @@ export default async (req) => {
 };
 
 export const config = {
-  path: ['/api/status', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/snap', '/api/summarize'],
+  path: ['/api/status', '/api/login', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/snap', '/api/summarize'],
 };
