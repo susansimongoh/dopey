@@ -431,7 +431,7 @@ button { font-family: inherit; }
     <div class="masthead-top">
       <div>
         <div class="mast-kicker" id="mast-kicker">Daily Media Monitoring</div>
-        <div class="mast-title" id="mast-title">—</div>
+        <div class="mast-title" id="mast-title"></div>
         <div class="mast-meta">
           <span id="mast-fetched">not fetched yet</span>
           <span id="mast-saved"></span>
@@ -835,7 +835,7 @@ async function openDay(date, opts = {}) {
 
 function renderMasthead() {
   el('mast-title').textContent = prettyDate(S.date);
-  el('mast-kicker').textContent = S.date === localDate() ? 'Daily media monitoring — live desk' : 'Daily media monitoring — archive';
+  el('mast-kicker').textContent = S.date === localDate() ? 'Daily media monitoring · live desk' : 'Daily media monitoring · archive';
   const f = S.day.fetched_at, sf = S.day.social_fetched_at;
   const stamp = d => new Date(d).toLocaleString('en-SG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   el('mast-fetched').textContent =
