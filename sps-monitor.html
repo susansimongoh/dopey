@@ -445,8 +445,7 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
   padding: 44px 44px 40px; box-shadow: 0 50px 120px -30px rgba(0,0,0,.7);
   display: flex; flex-direction: column; animation: pop .5s var(--ease);
 }
-.tmg-wordmark { display: flex; flex-direction: column; line-height: 1.18; font-weight: 600; font-size: 28px; letter-spacing: .18em; color: var(--ink); }
-.tmg-wordmark .red { color: #c41230; }
+.tmg-logo { display: block; width: 180px; max-width: 70%; height: auto; margin-bottom: 4px; }
 .login-sub { color: var(--muted); font-size: 15px; margin: 18px 0 26px; letter-spacing: -.01em; }
 .login-input {
   width: 100%; border: none; background: #eef1fb; border-radius: 12px; padding: 15px 17px;
@@ -572,7 +571,7 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
 <!-- ═══ SIGN-IN GATE ═══ -->
 <div class="login-overlay hidden" id="login-overlay">
   <form class="login-card" onsubmit="doLogin(event)">
-    <div class="tmg-wordmark"><span>THAT</span><span class="red">MARKETING</span><span>GUY</span></div>
+    <img class="tmg-logo" src="/tmg-logo.png" alt="That Marketing Guy">
     <p class="login-sub">Sign in to access your project dashboard.</p>
     <input class="login-input" id="login-email" type="email" placeholder="Email" autocomplete="username">
     <input class="login-input" id="login-pass" type="password" placeholder="Password" autocomplete="current-password">
