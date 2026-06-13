@@ -517,7 +517,7 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
       <div>
         <div class="mast-kicker" id="mast-kicker">Daily Media Monitoring</div>
         <div class="mast-title" id="mast-title"></div>
-        <div class="mast-meta">
+        <div class="mast-meta hidden">
           <span id="mast-fetched">not fetched yet</span>
           <span id="mast-saved"></span>
         </div>
@@ -1177,19 +1177,38 @@ function jaccard(a, b) {
   let inter = 0; a.forEach(x => { if (b.has(x)) inter++; });
   return inter / (a.size + b.size - inter);
 }
+// Distinctive proper-noun phrases in a caption — runs of 2+ Capitalized/ALLCAPS
+// words (e.g. "CHIJ Katong Convent", "Annual Sports Exchange"). Used to merge two
+// posts about the SAME event even when their captions barely overlap lexically.
+// Ubiquitous org/account names are excluded so they don't merge unrelated posts.
+const PHRASE_STOP = new Set([
+  'yellow ribbon', 'yellow ribbon singapore', 'yellow ribbon project', 'yellow ribbon community',
+  'singapore prison', 'prison service', 'singapore prison service', 'home team', 'ministry of home affairs',
+  'captains of lives', 'second chances', 'changi prison', 'changi prison complex',
+]);
+function clipPhrases(c) {
+  const m = String(c.subject || '').match(/\b([A-Z][A-Za-z]+(?:\s+(?:of\s+|the\s+)?[A-Z][A-Za-z]+)+)\b/g) || [];
+  const out = new Set();
+  m.forEach(p => { const k = p.toLowerCase().replace(/\s+/g, ' ').trim(); if (k.split(' ').length >= 2 && !PHRASE_STOP.has(k)) out.add(k); });
+  return out;
+}
+function sharePhrase(a, b) { for (const p of a) if (b.has(p)) return true; return false; }
 // Group clips that describe the SAME story. Two clips merge when they share an
-// identical link, OR their caption token-sets overlap strongly (handles one post
-// syndicated across platforms with minor wording/handle differences, e.g.
-// "@cnainsider" vs "@CNA Insider"). Union-find keeps clusters transitive.
+// identical link, their captions overlap strongly (handles one post syndicated
+// across platforms with minor wording, e.g. "@cnainsider" vs "@CNA Insider"), OR
+// they share a distinctive proper-noun phrase (same event, different captions —
+// e.g. a TikTok and a YouTube about the "CHIJ Katong Convent" visit). Union-find
+// keeps clusters transitive.
 function clusterClips(clips) {
   const toks = clips.map(clipTokens);
+  const phr = clips.map(clipPhrases);
   const parent = clips.map((_, i) => i);
   const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
   const union = (a, b) => { parent[find(a)] = find(b); };
   for (let i = 0; i < clips.length; i++)
     for (let j = i + 1; j < clips.length; j++) {
       const sameLink = clips[i].link && clips[i].link === clips[j].link;
-      if (sameLink || jaccard(toks[i], toks[j]) >= 0.5) union(i, j);
+      if (sameLink || jaccard(toks[i], toks[j]) >= 0.5 || sharePhrase(phr[i], phr[j])) union(i, j);
     }
   const g = {};
   clips.forEach((c, i) => { const r = find(i); (g[r] = g[r] || []).push(c); });
