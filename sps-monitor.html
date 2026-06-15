@@ -1074,6 +1074,10 @@ function renderMasthead() {
     (f ? '⚡ news ' + stamp(f) : 'news not fetched') + (S.status?.apify ? (sf ? '  ·  🛰 socials ' + stamp(sf) : '  ·  socials not swept') : '');
   el('btn-fetch').textContent = f ? '⚡ Re-fetch news' : '⚡ Fetch news';
   el('btn-social').textContent = sf ? '🛰 Re-sweep socials' : '🛰 Social sweep';
+  // Sweeps apply ONLY to today — previous days are read-only from the archive.
+  const isToday = S.date === localDate();
+  el('btn-fetch').classList.toggle('hidden', !isToday);
+  el('btn-social').classList.toggle('hidden', !isToday || !S.status?.apify);
 }
 
 // Resolve a clip's hero image to a usable src. Remote URLs (cloud: og:image,
@@ -1093,6 +1097,7 @@ function fmtN(n) {
 
 /* ════════════════════ FETCH ════════════════════ */
 async function doFetch(force, auto) {
+  if (S.date !== localDate()) { toast('Fetching only applies to today — previous days are read-only from the archive.'); return; }
   if (!S.apiOk) { toast('Fetching needs the local launcher (Launch SPS Monitor.command).'); return; }
   if (S.day.fetched_at && !force && !auto) {
     if (!confirm('Already fetched today (results are cached). Fetch again and merge new items?')) return;
@@ -1127,6 +1132,7 @@ async function doFetch(force, auto) {
 }
 
 async function doSocialFetch(force) {
+  if (S.date !== localDate()) { toast('The social sweep only applies to today — previous days are read-only from the archive.'); return; }
   if (!S.apiOk) { toast('The social sweep needs the local launcher running.'); return; }
   if (S.day.social_fetched_at && !force) {
     const when = new Date(S.day.social_fetched_at).toLocaleString('en-SG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
