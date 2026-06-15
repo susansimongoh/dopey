@@ -171,7 +171,7 @@ export async function rebuildStories(day) {
   const byIdx = {};
   if (fresh.length) {
     try {
-      const items = fresh.map((g, i) => ({ key: String(i), pub: _uniq(g.map((c) => c.pub)).join(', '), platforms: _uniq(g.map((c) => c.plat).filter(Boolean)).join(', '), texts: g.map((c) => c.subject).filter(Boolean) }));
+      const items = fresh.map((g, i) => ({ key: String(i), pub: _uniq(g.map((c) => c.pub)).join(', '), platforms: _uniq(g.map((c) => c.plat).filter(Boolean)).join(', '), texts: g.map((c) => (c.subject || '') + (c.extra ? ` [text read from image/video: ${c.extra}]` : '')).filter(Boolean) }));
       (await summarizeItems(items) || []).forEach((r, i) => { byIdx[i] = r; });
     } catch (e) { /* caption fallback below */ }
   }
@@ -279,6 +279,7 @@ function itemToClip(it) {
     subject: it.title, link: it.link, cat: it.cat || 'daily_news',
     src: it.src, kw: it.kw, eng: it.eng || null, traction: it.traction || null,
     shot: it.img || null, published: it.published || null,
+    extra: it.extra || '',   // OCR / subtitle text read out of the image/video
   };
 }
 
@@ -300,8 +301,9 @@ export function mergeClips(day, results, cfg) {
     // skip the keyword gate but STILL must pass the SPS relevance gate on the title.
     if (!it.outlet && !valid.has(it.kw)) continue;
     // SPS/YRSG own posts and CARE-partner posts are intrinsically in scope (their
-    // own activity); everyone else (other accounts + news) must be SPS-relevant.
-    if (!ownOrCarePost(it) && !relevant(it.title, terms)) continue;
+    // own activity); everyone else (other accounts + news) must be SPS-relevant
+    // — checked against caption PLUS any OCR/subtitle text read from the media.
+    if (!ownOrCarePost(it) && !relevant((it.title || '') + ' ' + (it.extra || ''), terms)) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
   }
@@ -317,7 +319,7 @@ export function pruneClips(day, cfg) {
   day.clips = (day.clips || []).filter((c) => {
     if (!c.src) return true;          // manually added → keep
     if (ownOrCarePost(c)) return true; // own/CARE social post → in scope
-    return relevant(c.subject, terms);
+    return relevant((c.subject || '') + ' ' + (c.extra || ''), terms);
   });
   return before - (day.clips || []).length;
 }
@@ -532,24 +534,69 @@ function traction(plat, eng) {
   if (plat === 'TikTok' || plat === 'YouTube') { if (plays >= 4e5 || c >= 14000) return 'very_high'; if (plays >= 1e5 || c >= 3000) return 'high'; if (plays >= 4e4 || c >= 850) return 'moderate'; if (plays >= 2e4 || c >= 350) return 'low'; return 'very_low'; }
   if (c > 300) return 'high'; if (c >= 100) return 'moderate'; return 'low';
 }
-async function socialItem(plat, handle, title, link, dt, eng, img) {
+async function socialItem(plat, handle, title, link, dt, eng, img, extra) {
   return { id: await sha1_12(link), src: plat, kw: '@' + handle,
     cat: handle.toLowerCase().includes('prison') ? 'social_updates' : 'daily_news',
     title: (title || '(no caption)').trim().slice(0, 300), link, pub: handle, plat,
-    published: dt.toISOString(), eng, traction: traction(plat, eng), img: img || null, status: 'new' };
+    published: dt.toISOString(), eng, traction: traction(plat, eng), img: img || null,
+    extra: (extra || '').trim().slice(0, 1000), status: 'new' };
+}
+
+// Read text OUT of a post's image via Gemini vision (posters/graphics/title cards).
+// Best-effort: IG/FB CDN images often 403 server-side, so this can return ''.
+async function imageText(imgUrl) {
+  const key = Netlify.env.get('GEMINI_API_KEY');
+  if (!key || !imgUrl) return '';
+  try {
+    const r = await fetch(imgUrl, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
+    if (!r.ok) return '';
+    const ct = (r.headers.get('content-type') || '').split(';')[0];
+    if (!/^image\//.test(ct)) return '';
+    const buf = await r.arrayBuffer();
+    if (buf.byteLength > 4 * 1024 * 1024) return '';
+    const data = Buffer.from(buf).toString('base64');
+    const body = { contents: [{ parts: [
+      { inlineData: { mimeType: ct, data } },
+      { text: 'Transcribe ALL text visible in this image verbatim (captions, posters, on-screen graphics, title cards). If there is no text, reply with nothing. Output only the transcribed text.' },
+    ] }], generationConfig: { temperature: 0 } };
+    for (const model of ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest']) {
+      const rr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
+      if (rr.ok) { const d = await rr.json(); return ((d?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '').trim().slice(0, 600); }
+      if (![429, 500, 503].includes(rr.status)) break;
+    }
+  } catch { /* best-effort */ }
+  return '';
+}
+
+// TikTok auto-subtitles (spoken words) from the actor's subtitleLinks → plain text.
+async function tiktokSubs(v) {
+  try {
+    const links = (v.videoMeta && v.videoMeta.subtitleLinks) || v.subtitleLinks || [];
+    if (!links.length) return '';
+    const pick = links.find((l) => /eng|en-|^en/i.test(l.language || l.lang || '')) || links[0];
+    const url = pick.downloadLink || pick.link || pick.url;
+    if (!url) return '';
+    const vtt = await httpText(url, 10000);
+    return vtt.replace(/^WEBVTT[\s\S]*?\n\n/, '')
+      .replace(/^\d+\s*$/gm, '')
+      .replace(/\d\d?:\d\d:\d\d[.,]\d+\s*-->.*$/gm, '')
+      .replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 800);
+  } catch { return ''; }
 }
 const when = (v) => { if (!v) return null; try { return typeof v === 'number' ? new Date(v * 1000) : new Date(v); } catch { return null; } };
 
 async function sweepTiktok(handles, cutoff, limit) {
-  const items = await apifyRun('clockworks~tiktok-scraper', { profiles: handles, resultsPerPage: limit, profileScrapeSections: ['videos'], profileSorting: 'latest', excludePinnedPosts: true, shouldDownloadVideos: false, shouldDownloadCovers: false, shouldDownloadSubtitles: false, shouldDownloadSlideshowImages: false });
+  const items = await apifyRun('clockworks~tiktok-scraper', { profiles: handles, resultsPerPage: limit, profileScrapeSections: ['videos'], profileSorting: 'latest', excludePinnedPosts: true, shouldDownloadVideos: false, shouldDownloadCovers: false, shouldDownloadSubtitles: true, shouldDownloadSlideshowImages: false });
   const out = [];
   for (const v of items) {
     const dt = when(v.createTimeISO || v.createTime); const link = v.webVideoUrl;
     if (!dt || !link || dt < cutoff) continue;
     const h = (v.authorMeta && v.authorMeta.name) || 'unknown';
+    const subs = await tiktokSubs(v);   // spoken words from the video
     out.push(await socialItem('TikTok', h, v.text, link, dt,
       { plays: v.playCount || 0, likes: v.diggCount || 0, comments: v.commentCount || 0, shares: v.shareCount || 0 },
-      (v.videoMeta && v.videoMeta.coverUrl) || v.coverUrl));
+      (v.videoMeta && v.videoMeta.coverUrl) || v.coverUrl, subs));
   }
   return out;
 }
@@ -596,6 +643,15 @@ export async function runSocialFetch(date) {
   for (const [name, fn, handles] of sweeps) {
     try { results = results.concat(await fn(handles, cutoff, limit)); }
     catch (e) { errors.push(`${name}: ${String(e).slice(0, 90)}`); }
+  }
+  // Read text OUT of each post's image (vision OCR) and merge it into `extra`
+  // alongside any TikTok subtitles, so on-image/spoken content feeds the relevance
+  // gate + summary. Best-effort + sequential to be gentle on the Gemini quota.
+  for (const it of results) {
+    try {
+      const ocr = it.img ? await imageText(it.img) : '';
+      if (ocr) it.extra = ((it.extra || '') + ' ' + ocr).trim().slice(0, 1000);
+    } catch { /* best-effort */ }
   }
   // Bucket each post into the day it was PUBLISHED (not the sweep day), so a sweep
   // distributes its window across the right days and never piles last week's posts

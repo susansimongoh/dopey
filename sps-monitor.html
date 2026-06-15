@@ -1339,7 +1339,7 @@ async function generateStories(silent) {
         key: String(i),
         pub: uniq(group.map(c => c.pub)).join(', '),
         platforms: uniq(group.map(c => c.plat).filter(Boolean)).join(', '),
-        texts: group.map(c => c.subject).filter(Boolean),
+        texts: group.map(c => (c.subject || '') + (c.extra ? ` [text read from image/video: ${c.extra}]` : '')).filter(Boolean),
       }));
       const res = await api('/api/summarize', { items });
       if (res.ok) (res.results || []).forEach((r, i) => { byIdx[i] = r; });
