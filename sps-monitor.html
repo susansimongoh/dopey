@@ -475,6 +475,9 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
 .role-pill.tmg_user { background: var(--verm-soft); color: var(--verm-deep); }
 .role-pill.client { background: var(--paper-2); color: var(--muted); }
 .users-add { background: rgba(0,0,0,.025); border-radius: 16px; padding: 16px 18px; }
+.pending-tag { font-family: var(--mono); font-size: 8.5px; letter-spacing: .5px; text-transform: uppercase; background: var(--gold-soft); color: var(--gold); padding: 2px 7px; border-radius: 99px; font-weight: 600; vertical-align: middle; }
+.invite-banner { background: var(--verm-soft); border: 1px solid var(--blue-mid); color: var(--ink-2); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.5; }
+.invite-code { font-family: var(--mono); font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--verm-deep); background: #fff; padding: 2px 10px; border-radius: 8px; user-select: all; }
 
 @media (max-width: 900px) {
   .rail { display: none; }
@@ -570,13 +573,24 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
 
 <!-- ═══ SIGN-IN GATE ═══ -->
 <div class="login-overlay hidden" id="login-overlay">
-  <form class="login-card" onsubmit="doLogin(event)">
+  <form class="login-card" onsubmit="doLogin(event)" id="login-form">
     <img class="tmg-logo" src="/tmg-logo.png" alt="That Marketing Guy">
     <p class="login-sub">Sign in to access your project dashboard.</p>
     <input class="login-input" id="login-email" type="email" placeholder="Email" autocomplete="username">
     <input class="login-input" id="login-pass" type="password" placeholder="Password" autocomplete="current-password">
     <div class="login-err hidden" id="login-err"></div>
     <button class="login-btn" type="submit" id="login-btn">Sign in</button>
+    <button class="login-cancel" type="button" onclick="showSetPw()">Have an invite code? Set your password</button>
+  </form>
+  <form class="login-card hidden" onsubmit="doSetPassword(event)" id="setpw-form">
+    <img class="tmg-logo" src="/tmg-logo.png" alt="That Marketing Guy">
+    <p class="login-sub">Set your password using the invite code from your admin.</p>
+    <input class="login-input" id="sp-email" type="email" placeholder="Email" autocomplete="username">
+    <input class="login-input" id="sp-code" placeholder="Invite code" autocapitalize="characters" autocomplete="off">
+    <input class="login-input" id="sp-pass" type="password" placeholder="Choose a password (min 6 chars)" autocomplete="new-password">
+    <div class="login-err hidden" id="sp-err"></div>
+    <button class="login-btn" type="submit" id="sp-btn">Set password &amp; sign in</button>
+    <button class="login-cancel" type="button" onclick="showSignIn()">Back to sign in</button>
   </form>
 </div>
 
@@ -585,6 +599,7 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
   <div class="modal">
     <h3>Manage users</h3>
     <div id="users-list" class="users-list"></div>
+    <div id="invite-banner" class="invite-banner hidden"></div>
     <div class="users-add">
       <div class="panel-title">Invite / update a user</div>
       <div class="f-row">
@@ -599,7 +614,7 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
             <option value="tmg_admin">TMG admin — full access incl. users</option>
           </select>
         </div>
-        <div><label class="f-label">Password <span style="text-transform:none;letter-spacing:0;color:var(--muted)">(blank = keep existing)</span></label><input class="f-input" id="u-pass" type="text" placeholder="Set a password"></div>
+        <div><label class="f-label">Password <span style="text-transform:none;letter-spacing:0;color:var(--muted)">(leave blank → user sets their own via invite code)</span></label><input class="f-input" id="u-pass" type="text" placeholder="Leave blank to invite"></div>
       </div>
       <button class="btn btn-sm btn-ink" style="margin-top:12px" onclick="saveUser()">Save user</button>
     </div>
@@ -860,7 +875,25 @@ function applyRole() {
   // Gate: no valid session → show the sign-in wall and stop.
   el('login-overlay').classList.toggle('hidden', !!s.token);
 }
-function openLogin() { el('login-overlay').classList.remove('hidden'); setTimeout(() => el('login-email').focus(), 60); }
+function openLogin() { el('login-overlay').classList.remove('hidden'); showSignIn(); setTimeout(() => el('login-email').focus(), 60); }
+function showSetPw() { el('login-form').classList.add('hidden'); el('setpw-form').classList.remove('hidden'); el('sp-err').classList.add('hidden'); setTimeout(() => el('sp-email').focus(), 60); }
+function showSignIn() { el('setpw-form').classList.add('hidden'); el('login-form').classList.remove('hidden'); }
+async function doSetPassword(ev) {
+  ev.preventDefault();
+  const email = el('sp-email').value.trim(), code = el('sp-code').value.trim(), password = el('sp-pass').value;
+  const btn = el('sp-btn'); btn.disabled = true; btn.textContent = 'Setting…';
+  try {
+    const res = await api('/api/set-password', { email, code, password });
+    if (!(res && res.ok && res.token)) throw new Error((res && res.error) || 'Could not set password.');
+    localStorage.setItem('sps-session', JSON.stringify({ token: res.token, role: res.role, email: res.email, name: res.name }));
+    applyRole();
+    await loadLedger(); await openDay(localDate());
+    renderAll(); badges();
+    toast(`Password set — signed in as ${ROLE_LABEL[res.role] || res.role}.`);
+  } catch (e) {
+    const er = el('sp-err'); er.textContent = e.message || 'Failed.'; er.classList.remove('hidden');
+  } finally { btn.disabled = false; btn.textContent = 'Set password & sign in'; }
+}
 async function doLogin(ev) {
   ev.preventDefault();
   const email = el('login-email').value.trim(), password = el('login-pass').value;
@@ -888,6 +921,7 @@ function signOut() {
 async function openUsers() {
   el('users-modal').classList.remove('hidden');
   el('u-email').value = ''; el('u-name').value = ''; el('u-pass').value = ''; el('u-role').value = 'client';
+  el('invite-banner').classList.add('hidden');
   await loadUsers();
 }
 async function loadUsers() {
@@ -896,12 +930,19 @@ async function loadUsers() {
     const res = await api('/api/users');
     if (!res.ok) throw new Error(res.error || 'Could not load users.');
     box.innerHTML = (res.users || []).map(u => `<div class="user-row">
-      <div class="u-main"><div class="u-name">${esc(u.name || u.email)}</div><div class="u-email">${esc(u.email)}</div></div>
+      <div class="u-main"><div class="u-name">${esc(u.name || u.email)} ${u.pending ? '<span class="pending-tag">awaiting setup</span>' : ''}</div><div class="u-email">${esc(u.email)}</div></div>
       <span class="role-pill ${esc(u.role)}">${esc(ROLE_LABEL[u.role] || u.role)}</span>
       <button class="btn btn-sm btn-ghost" onclick="editUser('${esc(u.email)}','${esc(u.name || '')}','${esc(u.role)}')">Edit</button>
+      <button class="btn btn-sm btn-ghost" onclick="inviteUser('${esc(u.email)}')">${u.pending ? 'Resend code' : 'Reset password'}</button>
       <button class="btn btn-sm btn-ghost" style="color:#c0392b" onclick="delUser('${esc(u.email)}')">Remove</button>
     </div>`).join('') || '<div class="ov-muted">No users yet.</div>';
   } catch (e) { box.innerHTML = `<div class="ov-muted">${esc(e.message)}</div>`; }
+}
+function showInvite(email, code) {
+  const b = el('invite-banner');
+  b.innerHTML = `<b>Invite code for ${esc(email)}:</b> <span class="invite-code">${esc(code)}</span><br>
+    Share this with them. At sign-in they click <b>"Have an invite code?"</b>, enter their email + this code, and choose their own password. The code works once.`;
+  b.classList.remove('hidden');
 }
 function editUser(email, name, role) {
   el('u-email').value = email; el('u-name').value = name; el('u-role').value = role; el('u-pass').value = '';
@@ -915,7 +956,18 @@ async function saveUser() {
     const res = await api('/api/users', { action: 'save', email, name, role, password });
     if (!res.ok) throw new Error(res.error || 'Could not save.');
     el('u-email').value = ''; el('u-name').value = ''; el('u-pass').value = ''; el('u-role').value = 'client';
-    await loadUsers(); toast('User saved.');
+    await loadUsers();
+    if (res.inviteCode) { showInvite(res.email, res.inviteCode); toast('User invited — share the code below.'); }
+    else toast('User saved.');
+  } catch (e) { toast(e.message); }
+}
+async function inviteUser(email) {
+  try {
+    const res = await api('/api/users', { action: 'invite', email });
+    if (!res.ok) throw new Error(res.error || 'Could not generate a code.');
+    await loadUsers();
+    showInvite(res.email, res.inviteCode);
+    toast('Invite code generated — share the code below.');
   } catch (e) { toast(e.message); }
 }
 async function delUser(email) {

@@ -17,10 +17,25 @@ export default async (req) => {
     if (req.method === 'POST' && path === '/api/login') {
       const { email, password } = await req.json();
       const u = await findUser(email);
-      if (!u || !u.hash) return json({ ok: false, error: 'Invalid email or password.' }, 401);
+      if (!u || !u.hash) return json({ ok: false, error: u && u.invite ? 'Set your password first using the invite code from your admin.' : 'Invalid email or password.' }, 401);
       if ((await hashPassword(email, password)) !== u.hash) return json({ ok: false, error: 'Invalid email or password.' }, 401);
       const token = await makeToken(u.email, u.role);
       return json({ ok: true, token, role: u.role, email: u.email, name: u.name || '' });
+    }
+    // User redeems an invite code to set their OWN password, then is signed in.
+    if (req.method === 'POST' && path === '/api/set-password') {
+      const { email, code, password } = await req.json();
+      if (!password || String(password).length < 6) return json({ ok: false, error: 'Password must be at least 6 characters.' }, 400);
+      const list = await getUsers();
+      const i = list.findIndex((x) => x.email.toLowerCase() === (email || '').toLowerCase());
+      const u = i >= 0 ? list[i] : null;
+      if (!u || !u.invite) return json({ ok: false, error: 'No pending invite for that email. Ask your admin for a code.' }, 400);
+      if ((await hashPassword(u.email, (code || '').trim().toUpperCase())) !== u.invite) return json({ ok: false, error: 'That invite code is not valid.' }, 401);
+      u.hash = await hashPassword(u.email, password);
+      delete u.invite;
+      list[i] = u;
+      await putUsers(list);
+      return json({ ok: true, token: await makeToken(u.email, u.role), role: u.role, email: u.email, name: u.name || '' });
     }
     if (path === '/api/users') {
       // user management — TMG admin only
@@ -28,27 +43,44 @@ export default async (req) => {
       if (!auth || auth.role !== 'tmg_admin') return json({ ok: false, error: 'Forbidden' }, 403);
       if (req.method === 'GET') {
         const list = await getUsers();
-        return json({ ok: true, users: list.map((x) => ({ email: x.email, name: x.name || '', role: x.role })) });
+        return json({ ok: true, users: list.map((x) => ({ email: x.email, name: x.name || '', role: x.role, pending: !x.hash })) });
       }
       if (req.method === 'POST') {
         const { action, email, name, role, password } = await req.json();
         const list = await getUsers();
         const i = list.findIndex((x) => x.email.toLowerCase() === (email || '').toLowerCase());
+        // 6-char human-friendly one-time code (no ambiguous chars)
+        const genCode = () => { const b = new Uint8Array(6); crypto.getRandomValues(b); return [...b].map((x) => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[x % 31]).join(''); };
         if (action === 'delete') {
           if (email.toLowerCase() === auth.email.toLowerCase()) return json({ ok: false, error: "You can't delete your own account." }, 400);
           await putUsers(list.filter((x) => x.email.toLowerCase() !== (email || '').toLowerCase()));
           return json({ ok: true });
+        }
+        // Issue/re-issue an invite code so the user sets their own password.
+        if (action === 'invite') {
+          if (i < 0) return json({ ok: false, error: 'No such user.' }, 400);
+          const code = genCode();
+          list[i] = { ...list[i], invite: await hashPassword(list[i].email, code) };
+          await putUsers(list);
+          return json({ ok: true, inviteCode: code, email: list[i].email });
         }
         if (!email || !role) return json({ ok: false, error: 'Email and role are required.' }, 400);
         if (!['tmg_admin', 'tmg_user', 'client'].includes(role)) return json({ ok: false, error: 'Invalid role.' }, 400);
         const rec = i >= 0 ? { ...list[i] } : { email: email.toLowerCase() };
         rec.name = (name ?? rec.name) || '';
         rec.role = role;
-        if (password) rec.hash = await hashPassword(email, password);
-        if (i < 0 && !rec.hash) return json({ ok: false, error: 'A password is required for a new user.' }, 400);
+        let inviteCode = null;
+        if (password) {
+          rec.hash = await hashPassword(email, password);   // admin set it directly (optional)
+          delete rec.invite;
+        } else if (!rec.hash) {
+          // No password yet → issue an invite code so the user sets their own.
+          inviteCode = genCode();
+          rec.invite = await hashPassword(rec.email, inviteCode);
+        }
         if (i >= 0) list[i] = rec; else list.push(rec);
         await putUsers(list);
-        return json({ ok: true });
+        return json({ ok: true, inviteCode, email: rec.email });
       }
     }
     if (req.method === 'GET' && path === '/api/days') {
@@ -106,5 +138,5 @@ export default async (req) => {
 };
 
 export const config = {
-  path: ['/api/status', '/api/login', '/api/users', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/regen', '/api/snap', '/api/summarize'],
+  path: ['/api/status', '/api/login', '/api/set-password', '/api/users', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/regen', '/api/snap', '/api/summarize'],
 };
