@@ -1129,7 +1129,9 @@ async function doFetch(force, auto) {
 async function doSocialFetch(force) {
   if (!S.apiOk) { toast('The social sweep needs the local launcher running.'); return; }
   if (S.day.social_fetched_at && !force) {
-    if (!confirm('Socials already swept today (results are cached). Sweep again? This spends Apify credits.')) return;
+    const when = new Date(S.day.social_fetched_at).toLocaleString('en-SG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const dayLabel = S.date === localDate() ? 'today' : prettyDate(S.date);
+    if (!confirm(`Socials for ${dayLabel} were already swept (last: ${when}) and the results are cached. Sweep again? This spends Apify credits (~$0.85).`)) return;
     force = true;
   }
   const fl = el('fetchline');
