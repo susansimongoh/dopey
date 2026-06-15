@@ -597,12 +597,22 @@ export async function runSocialFetch(date) {
     try { results = results.concat(await fn(handles, cutoff, limit)); }
     catch (e) { errors.push(`${name}: ${String(e).slice(0, 90)}`); }
   }
-  day = (await getDay(date)) || day;
-  mergeClips(day, results, cfg);
-  day.social_fetched_at = new Date().toISOString();
-  day.social_errors = errors;
-  await putDay(day);
-  return day;
+  // Bucket each post into the day it was PUBLISHED (not the sweep day), so a sweep
+  // distributes its window across the right days and never piles last week's posts
+  // onto today / duplicates the archive. Posts already stored dedupe by link.
+  const byDate = {};
+  for (const it of results) {
+    const d = (it.published || '').slice(0, 10);
+    if (d) (byDate[d] = byDate[d] || []).push(it);
+  }
+  const touched = new Set([date, ...Object.keys(byDate)]);
+  for (const d of touched) {
+    let day = (await getDay(d)) || freshDay(d);
+    if (byDate[d] && byDate[d].length) { mergeClips(day, byDate[d], cfg); day = await rebuildStories(day); }
+    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; }
+    await putDay(day);
+  }
+  return (await getDay(date)) || freshDay(date);
 }
 
 // ── og:image for news clips (cloud "snap") ───────────────────────────────
