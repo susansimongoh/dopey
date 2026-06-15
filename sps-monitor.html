@@ -524,7 +524,7 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
       </div>
       <div class="mast-actions">
         <button class="btn editor-only" id="btn-fetch" onclick="doFetch(false)">⚡ Fetch news</button>
-        <button class="btn hidden editor-only" id="btn-social" onclick="doSocialFetch(false)">🛰 Social sweep</button>
+        <button class="btn hidden editor-only" id="btn-social" onclick="doSocialFetch(false)">🛰 Sweep socials</button>
         <button class="btn admin-only" onclick="openUsers()">⚇ Manage users</button>
         <button class="btn" onclick="openReportModal()" title="Report PDF">🖨</button>
       </div>
@@ -548,7 +548,7 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
       <div id="stories-list"></div>
       <div id="stories-empty" class="empty hidden">
         <div class="big">No stories yet.</div>
-        <p>Stories write themselves from clips automatically. Add clips via <b>Fetch news</b> or <b>Social sweep</b>, or add a story manually.</p>
+        <p>Stories write themselves from clips automatically. Add clips via <b>Fetch news</b> or <b>Sweep socials</b>, or add a story manually.</p>
       </div>
     </section>
 
@@ -1073,7 +1073,7 @@ function renderMasthead() {
   el('mast-fetched').textContent =
     (f ? '⚡ news ' + stamp(f) : 'news not fetched') + (S.status?.apify ? (sf ? '  ·  🛰 socials ' + stamp(sf) : '  ·  socials not swept') : '');
   el('btn-fetch').textContent = '⚡ Fetch news';
-  el('btn-social').textContent = '🛰 Social sweep';
+  el('btn-social').textContent = '🛰 Sweep socials';
   // Sweeps apply ONLY to today — previous days are read-only from the archive.
   const isToday = S.date === localDate();
   el('btn-fetch').classList.toggle('hidden', !isToday);
