@@ -1819,6 +1819,19 @@ function toast(msg, actionLabel, actionFn) {
   await loadLedger();
   await openDay(localDate());
 })();
+
+// Auto-rollover: a long-open tab must notice when the date changes (e.g. left
+// open past midnight) so the calendar's "today" marker and clickable range stay
+// current. Re-check on focus/visibility + a 5-min backstop; re-render only if the
+// day actually rolled over (keeps the user's current view).
+let _curToday = localDate();
+function checkDateRollover() {
+  const now = localDate();
+  if (now !== _curToday) { _curToday = now; renderLedger(); }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDateRollover(); });
+window.addEventListener('focus', checkDateRollover);
+setInterval(checkDateRollover, 5 * 60 * 1000);
 </script>
 
 </body>
