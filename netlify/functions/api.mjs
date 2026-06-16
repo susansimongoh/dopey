@@ -1,7 +1,8 @@
 // Synchronous API: fast Supabase-backed operations.
 // Heavy fetching lives in the *-background functions.
 import { getDay, putDay, listDays, getWatchlist, putWatchlist, ogImage, summarizeItems,
-  hashPassword, makeToken, verifyToken, getUsers, putUsers, findUser, rebuildStories, pruneClips, getWatchlist as _gw } from '../lib/sps.mjs';
+  hashPassword, makeToken, verifyToken, getUsers, putUsers, findUser, rebuildStories, pruneClips,
+  listProjects, putProjects } from '../lib/sps.mjs';
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -20,7 +21,7 @@ export default async (req) => {
       if (!u || !u.hash) return json({ ok: false, error: u && u.invite ? 'Set your password first using the invite code from your admin.' : 'Invalid email or password.' }, 401);
       if ((await hashPassword(email, password)) !== u.hash) return json({ ok: false, error: 'Invalid email or password.' }, 401);
       const token = await makeToken(u.email, u.role);
-      return json({ ok: true, token, role: u.role, email: u.email, name: u.name || '' });
+      return json({ ok: true, token, role: u.role, email: u.email, name: u.name || '', projects: u.projects || [] });
     }
     // User redeems an invite code to set their OWN password, then is signed in.
     if (req.method === 'POST' && path === '/api/set-password') {
@@ -35,7 +36,7 @@ export default async (req) => {
       delete u.invite;
       list[i] = u;
       await putUsers(list);
-      return json({ ok: true, token: await makeToken(u.email, u.role), role: u.role, email: u.email, name: u.name || '' });
+      return json({ ok: true, token: await makeToken(u.email, u.role), role: u.role, email: u.email, name: u.name || '', projects: u.projects || [] });
     }
     if (path === '/api/users') {
       // user management — TMG admin only
@@ -43,10 +44,10 @@ export default async (req) => {
       if (!auth || auth.role !== 'tmg_admin') return json({ ok: false, error: 'Forbidden' }, 403);
       if (req.method === 'GET') {
         const list = await getUsers();
-        return json({ ok: true, users: list.map((x) => ({ email: x.email, name: x.name || '', role: x.role, pending: !x.hash })) });
+        return json({ ok: true, users: list.map((x) => ({ email: x.email, name: x.name || '', role: x.role, pending: !x.hash, projects: x.projects || [] })) });
       }
       if (req.method === 'POST') {
-        const { action, email, name, role, password } = await req.json();
+        const { action, email, name, role, password, projects } = await req.json();
         const list = await getUsers();
         const i = list.findIndex((x) => x.email.toLowerCase() === (email || '').toLowerCase());
         // 6-char human-friendly one-time code (no ambiguous chars)
@@ -69,6 +70,7 @@ export default async (req) => {
         const rec = i >= 0 ? { ...list[i] } : { email: email.toLowerCase() };
         rec.name = (name ?? rec.name) || '';
         rec.role = role;
+        if (Array.isArray(projects)) rec.projects = projects;   // which projects this user can see (admins ignore it)
         let inviteCode = null;
         if (password) {
           rec.hash = await hashPassword(email, password);   // admin set it directly (optional)
@@ -83,37 +85,66 @@ export default async (req) => {
         return json({ ok: true, inviteCode, email: rec.email });
       }
     }
+    // Project registry. GET returns the projects this signed-in user may see
+    // (admins: all; others: only those in their assignment). POST is admin-only.
+    if (path === '/api/projects') {
+      const auth = await verifyToken(req.headers.get('x-admin-token'));
+      const all = await listProjects();
+      if (req.method === 'GET') {
+        if (!auth) return json({ ok: false, error: 'Sign in.' }, 401);
+        let visible = all;
+        if (auth.role !== 'tmg_admin') {
+          const u = await findUser(auth.email);
+          const assigned = new Set((u && u.projects) || []);
+          visible = all.filter((p) => assigned.has(p.id));
+        }
+        return json({ ok: true, projects: visible, role: auth.role });
+      }
+      if (req.method === 'POST') {
+        if (!auth || auth.role !== 'tmg_admin') return json({ ok: false, error: 'Forbidden' }, 403);
+        const { action, project } = await req.json();
+        let list = all;
+        if (action === 'delete') list = list.filter((p) => p.id !== project.id);
+        else { const i = list.findIndex((p) => p.id === project.id); if (i >= 0) list[i] = { ...list[i], ...project }; else list.push(project); }
+        await putProjects(list);
+        return json({ ok: true, projects: list });
+      }
+    }
+    const proj = url.searchParams.get('project') || 'sps';
     if (req.method === 'GET' && path === '/api/days') {
-      return json(await listDays());
+      return json(await listDays(proj));
     }
     if (req.method === 'GET' && path.startsWith('/api/day/')) {
       const date = path.split('/').pop().replace(/\.json$/, '');
-      const day = await getDay(date);
+      const day = await getDay(proj, date);
       return day ? json(day) : json({ error: 'not found' }, 404);
     }
     if (req.method === 'GET' && path === '/api/keywords') {
-      return json(await getWatchlist());
+      return json(await getWatchlist(proj));
     }
     if (req.method === 'POST' && path === '/api/keywords') {
-      await putWatchlist(await req.json());
+      const { project, ...cfg } = await req.json();
+      await putWatchlist(project || proj, cfg);
       return json({ ok: true });
     }
     if (req.method === 'POST' && path === '/api/save') {
       const day = await req.json();
       if (!day.date) return json({ ok: false, error: 'no date' }, 400);
-      await putDay(day);
+      await putDay(day.project || proj, day);
       return json({ ok: true, saved: day.date });
     }
     if (req.method === 'POST' && path === '/api/regen') {
       // Atomic server-side story rebuild for one day (no browser, no race). Open
       // like /api/save — it only regenerates stories from a day's existing clips.
-      const { date } = await req.json();
+      const { date, project } = await req.json();
       if (!date) return json({ ok: false, error: 'date required' }, 400);
-      const day = await getDay(date);
+      const p = project || proj;
+      const day = await getDay(p, date);
       if (!day || !(day.clips || []).length) return json({ ok: true, date, stories: 0, note: 'no clips' });
-      const pruned = pruneClips(day, await _gw());   // drop clips that no longer pass the relevance gate
-      const updated = await rebuildStories(day);
-      await putDay(updated);
+      const cfg = await getWatchlist(p);
+      const pruned = pruneClips(day, cfg);   // drop clips that no longer pass the relevance gate
+      const updated = await rebuildStories(day, cfg);
+      await putDay(p, updated);
       const stories = (updated.stories || []);
       return json({ ok: true, date, pruned, clips: (updated.clips || []).length, stories: stories.length, fallbacks: stories.filter((s) => s.llm === false).length });
     }
@@ -138,5 +169,5 @@ export default async (req) => {
 };
 
 export const config = {
-  path: ['/api/status', '/api/login', '/api/set-password', '/api/users', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/regen', '/api/snap', '/api/summarize'],
+  path: ['/api/status', '/api/login', '/api/set-password', '/api/users', '/api/projects', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/regen', '/api/snap', '/api/summarize'],
 };

@@ -36,21 +36,24 @@ async function supa(path, opts = {}) {
   return txt ? JSON.parse(txt) : null;
 }
 
-export async function getDay(date) {
-  const rows = await supa(`monitor_days?date=eq.${date}&select=payload`);
+// All storage is namespaced by project (default 'sps' = legacy SPS data).
+const PROJ = (p) => (p || 'sps');
+
+export async function getDay(project, date) {
+  const rows = await supa(`monitor_days?project=eq.${PROJ(project)}&date=eq.${date}&select=payload`);
   return rows && rows[0] ? rows[0].payload : null;
 }
 
-export async function putDay(day) {
+export async function putDay(project, day) {
   await supa('monitor_days', {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates' },
-    json: [{ date: day.date, payload: day, updated_at: new Date().toISOString() }],
+    json: [{ project: PROJ(project), date: day.date, payload: day, updated_at: new Date().toISOString() }],
   });
 }
 
-export async function listDays() {
-  const rows = await supa('monitor_days?select=date,payload&order=date.desc');
+export async function listDays(project) {
+  const rows = await supa(`monitor_days?project=eq.${PROJ(project)}&select=date,payload&order=date.desc`);
   return (rows || []).map((r) => {
     const d = r.payload || {};
     return {
@@ -63,16 +66,28 @@ export async function listDays() {
   });
 }
 
-export async function getWatchlist() {
-  const rows = await supa(`monitor_config?key=eq.watchlist&select=value`);
-  return (rows && rows[0] && rows[0].value) || { lookback_days: 2, posts_per_account: 3, keywords: [], accounts: {} };
+export async function listProjects() {
+  const rows = await supa(`monitor_config?key=eq.projects&select=value`);
+  return (rows && rows[0] && rows[0].value) || [{ id: 'sps', name: 'Singapore Prison Service', logo: null }];
+}
+export async function putProjects(list) {
+  await supa('monitor_config', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' },
+    json: [{ key: 'projects', value: list, updated_at: new Date().toISOString() }] });
 }
 
-export async function putWatchlist(cfg) {
+export async function getWatchlist(project) {
+  const rows = await supa(`monitor_config?key=eq.watchlist:${PROJ(project)}&select=value`);
+  if (rows && rows[0] && rows[0].value) return rows[0].value;
+  // legacy fallback: the original single-project key
+  const old = await supa(`monitor_config?key=eq.watchlist&select=value`);
+  return (old && old[0] && old[0].value) || { lookback_days: 2, posts_per_account: 3, keywords: [], accounts: {} };
+}
+
+export async function putWatchlist(project, cfg) {
   await supa('monitor_config', {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates' },
-    json: [{ key: 'watchlist', value: cfg, updated_at: new Date().toISOString() }],
+    json: [{ key: `watchlist:${PROJ(project)}`, value: cfg, updated_at: new Date().toISOString() }],
   });
 }
 
@@ -126,11 +141,11 @@ export async function findUser(email) {
 // Kept in sync with sps-monitor.html so /api/regen rebuilds days atomically in
 // the backend (no browser, no page-state races).
 const _normHandle = (s) => (s || '').replace(/^@/, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-const SPS_OWN = ['singaporeprisonservice'];
-const YRSG_OWN = ['yellowribbonsg', 'yellowribbonsingapore'];
-const CARE_PARTNERS = ['prisonfellowshipsg', 'prisonfellowshipsingapore', 'singaporeantinarcotics', 'saca', 'iscos', 'neugen'];
-const ownOrg = (h) => { const n = _normHandle(h); if (SPS_OWN.includes(n)) return 'sps'; if (YRSG_OWN.includes(n)) return 'yrsg'; return null; };
-const isCarePartner = (h) => CARE_PARTNERS.includes(_normHandle(h));
+// Per-project categorisation, driven by the project's watchlist:
+//   cfg.own_accounts = { handle: subOrg }  → those posts go to Social Media Updates
+//   cfg.care_partners = [handle, ...]      → those posts go to the partner/CARE section
+const ownOrg = (cfg, h) => ((cfg && cfg.own_accounts) || {})[_normHandle(h)] || null;
+const isCarePartner = (cfg, h) => (((cfg && cfg.care_partners) || []).includes(_normHandle(h)));
 const CAT_KEYS = ['issues', 'daily_news', 'yellow_ribbon', 'care_network', 'social_updates', 'fyi'];
 const _uniq = (a) => [...new Set(a.filter(Boolean))];
 const _tokens = (c) => new Set(String(c.subject || '').toLowerCase().replace(/https?:\/\/\S+/g, ' ').replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 3));
@@ -155,7 +170,8 @@ function _cluster(clips) {
 // reuses prior auto drafts that already have a real LLM summary (by clip overlap);
 // only genuinely-new clusters hit Gemini. Caption fallbacks are tagged llm:false
 // so they self-heal on a later run. Mutates and returns `day`.
-export async function rebuildStories(day) {
+export async function rebuildStories(day, cfg) {
+  cfg = cfg || {};
   const clips = day.clips || [];
   day.stories = day.stories || [];
   const kept = day.stories.filter((s) => !s.auto || s.edited);
@@ -193,9 +209,9 @@ export async function rebuildStories(day) {
     const summary = (sum && sum.summary) ? sum.summary : capt;
     if (!hl) return;
     let cat, subOrg = '';
-    const org = group.map((c) => ownOrg(c.kw) || ownOrg(c.pub)).find(Boolean);
+    const org = group.map((c) => ownOrg(cfg, c.kw) || ownOrg(cfg, c.pub)).find(Boolean);
     if (org) { cat = 'social_updates'; subOrg = org; }
-    else if (group.some((c) => isCarePartner(c.kw) || isCarePartner(c.pub))) { cat = 'care_network'; }
+    else if (group.some((c) => isCarePartner(cfg, c.kw) || isCarePartner(cfg, c.pub))) { cat = 'care_network'; }
     else { cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : 'daily_news'; if (cat === 'social_updates') cat = 'daily_news'; }
     built.push({ id: 's' + Date.now().toString(36) + made, clipIds, cat, subOrg, hl, summary, reported, syndicated: '', published, llm, trInt: '', trCom: '', trNote: '', auto: true });
     made++;
@@ -268,8 +284,8 @@ const relevant = (text, terms) => {
 // scope). News items must NOT qualify — their `kw` is a search phrase like
 // "Singapore Prison Service" that would otherwise look like an own-account handle.
 const SOCIAL_PLATS = new Set(['Facebook', 'Instagram', 'TikTok', 'YouTube', 'LinkedIn']);
-const ownOrCarePost = (it) => SOCIAL_PLATS.has(it.plat) &&
-  !!(ownOrg(it.kw) || ownOrg(it.pub) || isCarePartner(it.kw) || isCarePartner(it.pub));
+const ownOrCarePost = (cfg, it) => SOCIAL_PLATS.has(it.plat) &&
+  !!(ownOrg(cfg, it.kw) || ownOrg(cfg, it.pub) || isCarePartner(cfg, it.kw) || isCarePartner(cfg, it.pub));
 
 // Convert a fetched item to a clip (the evidence-log shape used everywhere).
 function itemToClip(it) {
@@ -303,7 +319,7 @@ export function mergeClips(day, results, cfg) {
     // SPS/YRSG own posts and CARE-partner posts are intrinsically in scope (their
     // own activity); everyone else (other accounts + news) must be SPS-relevant
     // — checked against caption PLUS any OCR/subtitle text read from the media.
-    if (!ownOrCarePost(it) && !relevant((it.title || '') + ' ' + (it.extra || ''), terms)) continue;
+    if (!ownOrCarePost(cfg, it) && !relevant((it.title || '') + ' ' + (it.extra || ''), terms)) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
   }
@@ -318,7 +334,7 @@ export function pruneClips(day, cfg) {
   const before = (day.clips || []).length;
   day.clips = (day.clips || []).filter((c) => {
     if (!c.src) return true;          // manually added → keep
-    if (ownOrCarePost(c)) return true; // own/CARE social post → in scope
+    if (ownOrCarePost(cfg, c)) return true; // own/CARE social post → in scope
     return relevant((c.subject || '') + ' ' + (c.extra || ''), terms);
   });
   return before - (day.clips || []).length;
@@ -466,24 +482,24 @@ async function gatherNews(cfg, lookback, errors) {
   return uniq;
 }
 
-export async function runNewsFetch(date) {
-  const cfg = await getWatchlist();
+export async function runNewsFetch(project, date) {
+  const cfg = await getWatchlist(project);
   const errors = [];
   const uniq = await gatherNews(cfg, cfg.lookback_days || 2, errors);
   // re-read latest day in case a social sweep wrote concurrently
-  let day = (await getDay(date)) || freshDay(date);
+  let day = (await getDay(project, date)) || freshDay(date);
   mergeClips(day, uniq, cfg);
   day.fetched_at = new Date().toISOString();
   day.fetch_errors = errors;
-  await putDay(day);
+  await putDay(project, day);
   return day;
 }
 
-// One-off catch-up: fetch a wide window and bucket each SPS-relevant item into the
+// One-off catch-up: fetch a wide window and bucket each relevant item into the
 // day it was PUBLISHED (not the fetch day), then regenerate stories per day. Used
 // by /api/backfill to fill in history (e.g. "from the 4th").
-export async function runBackfill(fromDate) {
-  const cfg = await getWatchlist();
+export async function runBackfill(project, fromDate) {
+  const cfg = await getWatchlist(project);
   const errors = [];
   const today = new Date().toISOString().slice(0, 10);
   const lookback = Math.min(45, Math.ceil((Date.now() - new Date(fromDate + 'T00:00:00Z').getTime()) / 864e5) + 1);
@@ -497,13 +513,13 @@ export async function runBackfill(fromDate) {
   }
   const summary = [];
   for (const d of Object.keys(byDate).sort()) {
-    let day = (await getDay(d)) || freshDay(d);
+    let day = (await getDay(project, d)) || freshDay(d);
     const before = (day.clips || []).length;
     mergeClips(day, byDate[d], cfg);
     day.fetched_at = new Date().toISOString();
     day.fetch_errors = errors;
-    day = await rebuildStories(day);   // generate stories for the newly-added clips
-    await putDay(day);
+    day = await rebuildStories(day, cfg);   // generate stories for the newly-added clips
+    await putDay(project, day);
     summary.push({ date: d, added: (day.clips || []).length - before, clips: (day.clips || []).length, stories: (day.stories || []).length });
   }
   return { ok: true, from: fromDate, lookback, days: summary, errors };
@@ -626,10 +642,9 @@ async function sweepFacebook(handles, cutoff, limit) {
   return out;
 }
 
-export async function runSocialFetch(date) {
+export async function runSocialFetch(project, date) {
   if (!APIFY_TOKEN()) throw new Error('APIFY_TOKEN not set');
-  const cfg = await getWatchlist();
-  let day = (await getDay(date)) || freshDay(date);
+  const cfg = await getWatchlist(project);
   // Social accounts (activists, orgs, ministers) post SPS-relevant content
   // weekly, not daily — use a wider window than the news fetch.
   const cutoff = new Date(Date.now() - (cfg.social_lookback_days || 7) * 864e5);
@@ -663,12 +678,12 @@ export async function runSocialFetch(date) {
   }
   const touched = new Set([date, ...Object.keys(byDate)]);
   for (const d of touched) {
-    let day = (await getDay(d)) || freshDay(d);
-    if (byDate[d] && byDate[d].length) { mergeClips(day, byDate[d], cfg); day = await rebuildStories(day); }
+    let day = (await getDay(project, d)) || freshDay(d);
+    if (byDate[d] && byDate[d].length) { mergeClips(day, byDate[d], cfg); day = await rebuildStories(day, cfg); }
     if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; }
-    await putDay(day);
+    await putDay(project, day);
   }
-  return (await getDay(date)) || freshDay(date);
+  return (await getDay(project, date)) || freshDay(date);
 }
 
 // ── og:image for news clips (cloud "snap") ───────────────────────────────

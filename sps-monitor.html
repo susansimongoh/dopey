@@ -475,9 +475,35 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
 .role-pill.tmg_user { background: var(--verm-soft); color: var(--verm-deep); }
 .role-pill.client { background: var(--paper-2); color: var(--muted); }
 .users-add { background: rgba(0,0,0,.025); border-radius: 16px; padding: 16px 18px; }
+#u-projects-wrap { margin-top: 12px; }
+.u-projects { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.u-proj { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+body.role-admin #u-role option[value="tmg_admin"] { } /* placeholder */
 .pending-tag { font-family: var(--mono); font-size: 8.5px; letter-spacing: .5px; text-transform: uppercase; background: var(--gold-soft); color: var(--gold); padding: 2px 7px; border-radius: 99px; font-weight: 600; vertical-align: middle; }
 .invite-banner { background: var(--verm-soft); border: 1px solid var(--blue-mid); color: var(--ink-2); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.5; }
 .invite-code { font-family: var(--mono); font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--verm-deep); background: #fff; padding: 2px 10px; border-radius: 8px; user-select: all; }
+
+/* ═══ PROJECT GALLERY ═══ */
+.gallery { position: fixed; inset: 0; z-index: 90; overflow-y: auto; background: var(--paper); background-image: linear-gradient(180deg, #fbfbfd 0%, var(--paper) 260px); background-repeat: no-repeat; }
+.gallery-inner { max-width: 1100px; margin: 0 auto; padding: 56px 40px 80px; }
+.gallery-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 40px; flex-wrap: wrap; }
+.gal-logo { width: 150px; margin-bottom: 14px; }
+.gallery-sub { color: var(--muted); font-size: 15px; }
+.gallery-actions { display: flex; gap: 8px; align-items: center; }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+.gal-card { position: relative; background: var(--card); border-radius: 20px; box-shadow: var(--shadow-soft); height: 180px; display: grid; place-items: center; cursor: pointer; transition: transform .4s var(--ease), box-shadow .4s var(--ease); overflow: hidden; }
+.gal-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lift); }
+.gal-card img { max-width: 64%; max-height: 64%; object-fit: contain; }
+.gal-card .gal-tile { width: 84px; height: 84px; border-radius: 20px; display: grid; place-items: center; font-size: 38px; font-weight: 800; color: #fff; letter-spacing: -.02em; }
+.gal-card .gal-name { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.gal-card .gal-edit { position: absolute; top: 10px; right: 12px; font-size: 18px; color: var(--muted); opacity: 0; transition: opacity .3s; background: none; border: none; cursor: pointer; line-height: 1; }
+.gal-card:hover .gal-edit { opacity: 1; }
+.gal-add { border: 2px dashed var(--line-2); background: transparent; box-shadow: none; color: var(--muted); font-weight: 600; flex-direction: column; gap: 8px; }
+.gal-add:hover { border-color: var(--verm); color: var(--verm); transform: translateY(-3px); box-shadow: none; }
+.gal-add .plus { font-size: 30px; }
+.rail-back { background: none; border: none; cursor: pointer; font-family: var(--mono); font-size: 9.5px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); padding: 4px 0; text-align: left; margin-bottom: 8px; }
+.rail-back:hover { color: var(--ink); }
+.pm-logo-tile { width: 64px; height: 64px; border-radius: 14px; display: grid; place-items: center; font-size: 28px; font-weight: 800; color: #fff; }
 
 @media (max-width: 900px) {
   .rail { display: none; }
@@ -493,9 +519,10 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
 <!-- ═══ DAY LEDGER ═══ -->
 <aside class="rail">
   <div class="rail-brand">
+    <button class="rail-back" onclick="backToGallery()">‹ All projects</button>
     <div class="agency">That Marketing Guy</div>
-    <h1>The Monitor<em>.</em></h1>
-    <span class="client">SPS INTEL DESK</span>
+    <h1 id="rail-project">The Monitor<em>.</em></h1>
+    <span class="client" id="rail-projsub">SPS INTEL DESK</span>
   </div>
   <div class="ledger-head">
     <button class="cal-nav" onclick="calShift(-1)">‹</button>
@@ -594,6 +621,45 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
   </form>
 </div>
 
+<!-- ═══ PROJECT GALLERY ═══ -->
+<div class="gallery hidden" id="gallery">
+  <div class="gallery-inner">
+    <div class="gallery-head">
+      <div>
+        <img class="tmg-logo gal-logo" src="/tmg-logo.png" alt="That Marketing Guy">
+        <p class="gallery-sub">Pick a project to open its dashboard, or set up a new one.</p>
+      </div>
+      <div class="gallery-actions">
+        <button class="btn admin-only" onclick="openUsers()">⚇ Manage users</button>
+        <button class="btn btn-ghost" onclick="signOut()">⎋ Sign out</button>
+      </div>
+    </div>
+    <div class="gallery-grid" id="gallery-grid"></div>
+  </div>
+</div>
+
+<!-- ═══ PROJECT MODAL (add/edit) ═══ -->
+<div class="overlay hidden" id="project-modal">
+  <div class="modal">
+    <h3 id="project-modal-title">New project</h3>
+    <div class="f-row">
+      <div><label class="f-label">Project name</label><input class="f-input" id="pm-name" placeholder="Tote Board"></div>
+      <div><label class="f-label">Subtitle</label><input class="f-input" id="pm-short" placeholder="Engagement Monitor"></div>
+    </div>
+    <label class="f-label">Logo <span style="text-transform:none;letter-spacing:0;color:var(--muted)">(upload an image)</span></label>
+    <div class="cm-img-row">
+      <label class="btn btn-sm cm-upload">⬆ Upload logo<input type="file" id="pm-logo-file" accept="image/*" hidden onchange="onProjectLogo(event)"></label>
+      <span class="ov-muted" id="pm-logo-hint">No logo yet — a letter tile is used.</span>
+    </div>
+    <div id="pm-logo-preview" class="cm-img-preview"></div>
+    <div class="m-foot">
+      <button class="btn btn-ghost" id="pm-delete" style="margin-right:auto;color:#c0392b" onclick="deleteProject()">Delete project</button>
+      <button class="btn btn-ghost" onclick="closeModal('project-modal')">Cancel</button>
+      <button class="btn btn-ink" onclick="saveProject()">Save project</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ USER MANAGEMENT (TMG admin) ═══ -->
 <div class="overlay hidden" id="users-modal">
   <div class="modal">
@@ -615,6 +681,9 @@ body.role-client .admin-only, body.role-user .admin-only { display: none !import
           </select>
         </div>
         <div><label class="f-label">Password <span style="text-transform:none;letter-spacing:0;color:var(--muted)">(leave blank → user sets their own via invite code)</span></label><input class="f-input" id="u-pass" type="text" placeholder="Leave blank to invite"></div>
+      </div>
+      <div id="u-projects-wrap"><label class="f-label">Projects this user can see <span style="text-transform:none;letter-spacing:0;color:var(--muted)">(admins see all)</span></label>
+        <div id="u-projects" class="u-projects"></div>
       </div>
       <button class="btn btn-sm btn-ink" style="margin-top:12px" onclick="saveUser()">Save user</button>
     </div>
@@ -787,36 +856,40 @@ const CAT_KEYS = ['issues', 'daily_news', 'yellow_ribbon', 'care_network', 'soci
 // Normalise a handle OR display name to bare alphanumerics so FB page names
 // ("Singapore Prison Service") match handles ("singaporeprisonservice").
 function normHandle(s) { return (s || '').replace(/^@/, '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
-const SPS_OWN = ['singaporeprisonservice'];
-const YRSG_OWN = ['yellowribbonsg', 'yellowribbonsingapore'];
-// CARE Network partner accounts → always file under CARE Network.
-const CARE_PARTNERS = ['prisonfellowshipsg', 'prisonfellowshipsingapore', 'singaporeantinarcotics', 'saca', 'iscos', 'neugen'];
-function ownOrg(handle) {
-  const h = normHandle(handle);
-  if (SPS_OWN.includes(h)) return 'sps';
-  if (YRSG_OWN.includes(h)) return 'yrsg';
-  return null;
-}
-function isCarePartner(handle) { return CARE_PARTNERS.includes(normHandle(handle)); }
-// The report layout, always shown daily (with '-' when a section is empty).
+// Per-project categorisation, from the active project's watchlist (S.cfg). Falls
+// back to the SPS defaults so the legacy project still works if cfg is bare.
+const DEF_OWN = { singaporeprisonservice: 'sps', yellowribbonsg: 'yrsg', yellowribbonsingapore: 'yrsg' };
+const DEF_CARE = ['prisonfellowshipsg', 'prisonfellowshipsingapore', 'singaporeantinarcotics', 'saca', 'iscos', 'neugen'];
+function ownOrg(handle) { const m = (S.cfg && S.cfg.own_accounts) || DEF_OWN; return m[normHandle(handle)] || null; }
+function isCarePartner(handle) { const l = (S.cfg && S.cfg.care_partners) || DEF_CARE; return l.includes(normHandle(handle)); }
+// Default SPS report layout (used when a project's watchlist has no `sections`).
+const DEF_SECTIONS = [
+  { head: 'News Highlights', subs: [{ label: 'Issues', cat: 'issues' }] },
+  { label: 'Daily News', cat: 'daily_news' },
+  { label: 'Yellow Ribbon News', cat: 'yellow_ribbon' },
+  { label: 'CARE Network and Community Partner-Related News', cat: 'care_network' },
+  { head: 'Social Media Updates', subs: [
+      { label: 'Singapore Prison Service', cat: 'social_updates', subOrg: 'sps' },
+      { label: 'Yellow Ribbon Singapore', cat: 'social_updates', subOrg: 'yrsg' },
+  ] },
+  { label: 'FYI News', cat: 'fyi' },
+];
+// Build the day's report layout from the project's section config (data-driven).
 function sectionSpec() {
   const all = S.day.stories || [];
-  const f = fn => all.filter(fn);
-  return [
-    { head: 'News Highlights', subs: [{ label: 'Issues', stories: f(s => s.cat === 'issues') }] },
-    { label: 'Daily News', stories: f(s => s.cat === 'daily_news') },
-    { label: 'Yellow Ribbon News', stories: f(s => s.cat === 'yellow_ribbon') },
-    { label: 'CARE Network and Community Partner-Related News', stories: f(s => s.cat === 'care_network') },
-    { head: 'Social Media Updates', subs: [
-        { label: 'Singapore Prison Service', stories: f(s => s.cat === 'social_updates' && s.subOrg !== 'yrsg') },
-        { label: 'Yellow Ribbon Singapore', stories: f(s => s.cat === 'social_updates' && s.subOrg === 'yrsg') },
-    ] },
-    { label: 'FYI News', stories: f(s => s.cat === 'fyi') },
-  ];
+  const specs = (S.cfg && S.cfg.sections && S.cfg.sections.length) ? S.cfg.sections : DEF_SECTIONS;
+  const pick = (sub) => all.filter(s => s.cat === sub.cat && (sub.subOrg ? s.subOrg === sub.subOrg : true));
+  return specs.map(sec => sec.head
+    ? { head: sec.head, subs: (sec.subs || []).map(sub => ({ label: sub.label, stories: pick(sub) })) }
+    : { label: sec.label, stories: pick(sec) });
 }
 const TR_LABEL = { very_high: 'very high', high: 'high', moderate: 'moderate', low: 'low', very_low: 'very low' };
 
 const S = {
+  project: null,         // active project id (e.g. 'sps', 'tote')
+  proj: null,            // active project record {id,name,logo,accent}
+  cfg: null,             // active project watchlist (own_accounts/care_partners/sections…)
+  projects: [],          // projects visible to this user
   date: null,            // currently open day (YYYY-MM-DD)
   day: null,             // full day object
   days: [],              // ledger entries
@@ -850,8 +923,12 @@ async function api(path, body) {
   const tok = session().token;
   const headers = { 'Content-Type': 'application/json' };
   if (tok) headers['x-admin-token'] = tok;
-  const opts = body ? { method: 'POST', headers, body: JSON.stringify(body) } : (tok ? { headers } : {});
-  const r = await fetch(path, opts);
+  // Inject the active project: as ?project= on GETs, into the body on POSTs.
+  let url = path;
+  if (S.project && path.startsWith('/api/') && !body) url += (path.includes('?') ? '&' : '?') + 'project=' + encodeURIComponent(S.project);
+  const payload = body ? (S.project && typeof body === 'object' && !Array.isArray(body) ? { project: S.project, ...body } : body) : null;
+  const opts = payload ? { method: 'POST', headers, body: JSON.stringify(payload) } : (tok ? { headers } : {});
+  const r = await fetch(url, opts);
   if (!r.ok) throw new Error('HTTP ' + r.status);
   if (r.status === 202) return { __accepted: true };   // background function kicked off
   const txt = await r.text();
@@ -887,8 +964,7 @@ async function doSetPassword(ev) {
     if (!(res && res.ok && res.token)) throw new Error((res && res.error) || 'Could not set password.');
     localStorage.setItem('sps-session', JSON.stringify({ token: res.token, role: res.role, email: res.email, name: res.name }));
     applyRole();
-    await loadLedger(); await openDay(localDate());
-    renderAll(); badges();
+    await showGallery();
     toast(`Password set — signed in as ${ROLE_LABEL[res.role] || res.role}.`);
   } catch (e) {
     const er = el('sp-err'); er.textContent = e.message || 'Failed.'; er.classList.remove('hidden');
@@ -904,8 +980,7 @@ async function doLogin(ev) {
     localStorage.setItem('sps-session', JSON.stringify({ token: res.token, role: res.role, email: res.email, name: res.name }));
     el('login-pass').value = ''; el('login-err').classList.add('hidden');
     applyRole();
-    await loadLedger(); await openDay(S.date || localDate());
-    renderAll(); badges();
+    await showGallery();
     toast(`Signed in as ${ROLE_LABEL[res.role] || res.role}.`);
   } catch (e) {
     const er = el('login-err'); er.textContent = e.message || 'Sign in failed.'; er.classList.remove('hidden');
@@ -913,8 +988,95 @@ async function doLogin(ev) {
 }
 function signOut() {
   localStorage.removeItem('sps-session');
+  S.project = null; S.proj = null; S.cfg = null;
+  el('gallery').classList.add('hidden');
   applyRole();
   toast('Signed out.');
+}
+
+/* ════════════════════ PROJECT GALLERY ════════════════════ */
+const TILE_COLORS = ['#0f4aa8', '#0e7460', '#a8341a', '#6b3fa0', '#b3122a', '#1763d6', '#c47a18'];
+function tileColor(id) { let h = 0; for (const c of (id || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return TILE_COLORS[h % TILE_COLORS.length]; }
+function projectThumb(p, cls) {
+  if (p.logo) return `<img src="${esc(p.logo)}" alt="${esc(p.name)}">`;
+  const letter = (p.name || '?').trim()[0].toUpperCase();
+  return `<div class="${cls || 'gal-tile'}" style="background:${tileColor(p.id)}">${esc(letter)}</div>`;
+}
+async function showGallery() {
+  el('gallery').classList.remove('hidden');
+  const grid = el('gallery-grid'); grid.innerHTML = '<div class="ov-muted">Loading projects…</div>';
+  try {
+    const res = await api('/api/projects');
+    if (!res.ok) throw new Error(res.error || 'Could not load projects.');
+    S.projects = res.projects || [];
+    grid.innerHTML = S.projects.map(p => `<div class="gal-card" onclick="enterProject('${esc(p.id)}')">
+        ${S.admin ? `<button class="gal-edit" onclick="event.stopPropagation();openProjectModal('${esc(p.id)}')" title="Edit">⋯</button>` : ''}
+        ${projectThumb(p)}
+        <div class="gal-name">${esc(p.name)}</div>
+      </div>`).join('')
+      + (S.admin ? `<div class="gal-card gal-add" onclick="openProjectModal()"><span class="plus">+</span>Add new client</div>` : '');
+    if (!S.projects.length && !S.admin) grid.innerHTML = '<div class="ov-muted">No projects assigned to you yet. Ask your admin.</div>';
+  } catch (e) { grid.innerHTML = `<div class="ov-muted">${esc(e.message)}</div>`; }
+}
+async function enterProject(id) {
+  const p = S.projects.find(x => x.id === id); if (!p) return;
+  S.project = id; S.proj = p;
+  try { S.cfg = await api('/api/keywords'); } catch (e) { S.cfg = {}; }
+  S.keywords = S.cfg;
+  document.documentElement.style.setProperty('--verm', p.accent || '#0071e3');
+  // brand the rail with this project
+  el('rail-project').textContent = p.name;
+  el('rail-projsub').textContent = p.short || 'Daily media monitoring';
+  S.date = null; S.calYM = null; S.day = null;
+  el('gallery').classList.add('hidden');
+  await loadLedger();
+  await openDay(localDate());
+  renderAll(); badges();
+}
+function backToGallery() { showGallery(); }
+
+/* ── Add / edit a project (TMG admin) ── */
+function openProjectModal(id) {
+  S.editProjectId = id || null;
+  const p = id ? S.projects.find(x => x.id === id) : null;
+  el('project-modal-title').textContent = id ? 'Edit project' : 'New project';
+  el('pm-name').value = p ? p.name : '';
+  el('pm-short').value = p ? (p.short || '') : '';
+  S.pmLogo = p ? (p.logo || null) : null;
+  el('pm-logo-file').value = '';
+  el('pm-delete').classList.toggle('hidden', !id || id === 'sps');
+  renderProjectLogo();
+  el('project-modal').classList.remove('hidden');
+  setTimeout(() => el('pm-name').focus(), 60);
+}
+function renderProjectLogo() {
+  const box = el('pm-logo-preview');
+  if (S.pmLogo) { box.innerHTML = `<img src="${esc(S.pmLogo)}">`; el('pm-logo-hint').textContent = 'Logo set.'; }
+  else { box.innerHTML = ''; el('pm-logo-hint').textContent = 'No logo yet — a letter tile is used.'; }
+}
+function onProjectLogo(ev) {
+  const f = ev.target.files && ev.target.files[0]; if (!f) return;
+  if (f.size > 2 * 1024 * 1024) { toast('Logo too large (max 2 MB).'); return; }
+  const r = new FileReader(); r.onload = () => { S.pmLogo = r.result; renderProjectLogo(); }; r.readAsDataURL(f);
+}
+async function saveProject() {
+  const name = el('pm-name').value.trim(); if (!name) { toast('Project name is required.'); return; }
+  const id = S.editProjectId || normHandle(name).slice(0, 24) || ('p' + Date.now());
+  const project = { id, name, short: el('pm-short').value.trim(), logo: S.pmLogo || null, accent: (S.proj && S.proj.accent) || '#0071e3' };
+  try {
+    const res = await api('/api/projects', { action: 'save', project });
+    if (!res.ok) throw new Error(res.error || 'Could not save.');
+    closeModal('project-modal'); await showGallery(); toast('Project saved.');
+  } catch (e) { toast(e.message); }
+}
+async function deleteProject() {
+  if (!S.editProjectId || S.editProjectId === 'sps') return;
+  if (!confirm(`Remove the "${el('pm-name').value}" project from the gallery? (Its stored data is kept.)`)) return;
+  try {
+    const res = await api('/api/projects', { action: 'delete', project: { id: S.editProjectId } });
+    if (!res.ok) throw new Error(res.error || 'Could not delete.');
+    closeModal('project-modal'); await showGallery(); toast('Project removed.');
+  } catch (e) { toast(e.message); }
 }
 
 /* ── User management (TMG admin) ── */
@@ -922,17 +1084,28 @@ async function openUsers() {
   el('users-modal').classList.remove('hidden');
   el('u-email').value = ''; el('u-name').value = ''; el('u-pass').value = ''; el('u-role').value = 'client';
   el('invite-banner').classList.add('hidden');
+  if (!S.projects || !S.projects.length) { try { const r = await api('/api/projects'); if (r.ok) S.projects = r.projects; } catch (e) {} }
+  renderUserProjects([]);
   await loadUsers();
 }
+// checkboxes of every project, for assigning which a user can see
+function renderUserProjects(assigned) {
+  const set = new Set(assigned || []);
+  el('u-projects').innerHTML = (S.projects || []).map(p =>
+    `<label class="u-proj"><input type="checkbox" value="${esc(p.id)}" ${set.has(p.id) ? 'checked' : ''}> ${esc(p.name)}</label>`).join('') || '<span class="ov-muted">No projects yet.</span>';
+}
+function selectedUserProjects() { return [...el('u-projects').querySelectorAll('input:checked')].map(i => i.value); }
 async function loadUsers() {
   const box = el('users-list'); box.innerHTML = '<div class="ov-muted">Loading…</div>';
   try {
     const res = await api('/api/users');
     if (!res.ok) throw new Error(res.error || 'Could not load users.');
+    const pname = id => (S.projects.find(p => p.id === id) || {}).name || id;
     box.innerHTML = (res.users || []).map(u => `<div class="user-row">
-      <div class="u-main"><div class="u-name">${esc(u.name || u.email)} ${u.pending ? '<span class="pending-tag">awaiting setup</span>' : ''}</div><div class="u-email">${esc(u.email)}</div></div>
+      <div class="u-main"><div class="u-name">${esc(u.name || u.email)} ${u.pending ? '<span class="pending-tag">awaiting setup</span>' : ''}</div>
+        <div class="u-email">${esc(u.email)}${u.role !== 'tmg_admin' && (u.projects || []).length ? ' · ' + esc((u.projects || []).map(pname).join(', ')) : ''}</div></div>
       <span class="role-pill ${esc(u.role)}">${esc(ROLE_LABEL[u.role] || u.role)}</span>
-      <button class="btn btn-sm btn-ghost" onclick="editUser('${esc(u.email)}','${esc(u.name || '')}','${esc(u.role)}')">Edit</button>
+      <button class="btn btn-sm btn-ghost" onclick='editUser(${JSON.stringify(u).replace(/'/g, "&#39;")})'>Edit</button>
       <button class="btn btn-sm btn-ghost" onclick="inviteUser('${esc(u.email)}')">${u.pending ? 'Resend code' : 'Reset password'}</button>
       <button class="btn btn-sm btn-ghost" style="color:#c0392b" onclick="delUser('${esc(u.email)}')">Remove</button>
     </div>`).join('') || '<div class="ov-muted">No users yet.</div>';
@@ -944,18 +1117,20 @@ function showInvite(email, code) {
     Share this with them. At sign-in they click <b>"Have an invite code?"</b>, enter their email + this code, and choose their own password. The code works once.`;
   b.classList.remove('hidden');
 }
-function editUser(email, name, role) {
-  el('u-email').value = email; el('u-name').value = name; el('u-role').value = role; el('u-pass').value = '';
+function editUser(u) {
+  el('u-email').value = u.email; el('u-name').value = u.name || ''; el('u-role').value = u.role; el('u-pass').value = '';
+  renderUserProjects(u.projects || []);
   el('u-email').focus();
 }
 async function saveUser() {
   const email = el('u-email').value.trim(), name = el('u-name').value.trim(),
-    role = el('u-role').value, password = el('u-pass').value;
+    role = el('u-role').value, password = el('u-pass').value, projects = selectedUserProjects();
   if (!email) { toast('Email is required.'); return; }
   try {
-    const res = await api('/api/users', { action: 'save', email, name, role, password });
+    const res = await api('/api/users', { action: 'save', email, name, role, password, projects });
     if (!res.ok) throw new Error(res.error || 'Could not save.');
     el('u-email').value = ''; el('u-name').value = ''; el('u-pass').value = ''; el('u-role').value = 'client';
+    renderUserProjects([]);
     await loadUsers();
     if (res.inviteCode) { showInvite(res.email, res.inviteCode); toast('User invited — share the code below.'); }
     else toast('User saved.');
@@ -1872,10 +2047,8 @@ function toast(msg, actionLabel, actionFn) {
 (async function boot() {
   applyRole();   // sets role classes + shows the sign-in wall if there's no session
   try { S.status = await api('/api/status'); } catch (e) { S.status = { apify: false, supabase: false }; }
-  el('btn-social').classList.toggle('hidden', !S.status.apify);
   if (!session().token) { openLogin(); return; }   // gate: wait for sign-in
-  await loadLedger();
-  await openDay(localDate());
+  await showGallery();   // signed in → pick a project
 })();
 
 // Auto-rollover: a long-open tab must notice when the date changes (e.g. left
