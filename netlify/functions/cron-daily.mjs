@@ -14,6 +14,7 @@ export default async () => {
   let projects = [{ id: 'sps' }];
   try { projects = await listProjects(); } catch (e) { console.error('cron list projects failed', e); }
   for (const p of projects) {
+    if (p.paused) { console.log(`cron-daily ${today} [${p.id}]: paused, skipped`); continue; }
     const news = await post('/api/fetch', p.id);
     const social = await post('/api/fetch-social', p.id);
     console.log(`cron-daily ${today} [${p.id}]: fetch=${news} social=${social}`);

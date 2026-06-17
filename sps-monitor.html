@@ -501,6 +501,8 @@ body.role-admin #u-role option[value="tmg_admin"] { } /* placeholder */
 .gal-add { border: 2px dashed var(--line-2); background: transparent; box-shadow: none; color: var(--muted); font-weight: 600; flex-direction: column; gap: 8px; }
 .gal-add:hover { border-color: var(--verm); color: var(--verm); transform: translateY(-3px); box-shadow: none; }
 .gal-add .plus { font-size: 30px; }
+.gal-card.is-paused { opacity: .6; }
+.gal-card.is-paused:hover { opacity: 1; }
 .rail-back { background: none; border: none; cursor: pointer; font-family: var(--mono); font-size: 9.5px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); padding: 4px 0; text-align: left; margin-bottom: 8px; }
 .rail-back:hover { color: var(--ink); }
 .pm-logo-tile { width: 64px; height: 64px; border-radius: 14px; display: grid; place-items: center; font-size: 28px; font-weight: 800; color: #fff; }
@@ -646,12 +648,17 @@ body.role-admin #u-role option[value="tmg_admin"] { } /* placeholder */
       <div><label class="f-label">Project name</label><input class="f-input" id="pm-name" placeholder="Tote Board"></div>
       <div><label class="f-label">Subtitle</label><input class="f-input" id="pm-short" placeholder="Engagement Monitor"></div>
     </div>
-    <label class="f-label">Logo <span style="text-transform:none;letter-spacing:0;color:var(--muted)">(upload an image)</span></label>
+    <label class="f-label">Logo</label>
     <div class="cm-img-row">
-      <label class="btn btn-sm cm-upload">⬆ Upload logo<input type="file" id="pm-logo-file" accept="image/*" hidden onchange="onProjectLogo(event)"></label>
-      <span class="ov-muted" id="pm-logo-hint">No logo yet — a letter tile is used.</span>
+      <input class="f-input" id="pm-logo-url" placeholder="Paste an image, or paste a logo URL" oninput="setProjectLogo(el('pm-logo-url').value)">
+      <label class="btn btn-sm cm-upload">⬆ Upload<input type="file" id="pm-logo-file" accept="image/*" hidden onchange="onProjectLogo(event)"></label>
     </div>
     <div id="pm-logo-preview" class="cm-img-preview"></div>
+    <div class="f-row">
+      <div><label class="f-label">Primary colour</label><input class="f-input" id="pm-primary" placeholder="Blank = auto from logo"></div>
+      <div><label class="f-label">Accent colour</label><input class="f-input" id="pm-accent" placeholder="Blank = auto from logo"></div>
+    </div>
+    <label class="u-proj" style="margin-top:14px"><input type="checkbox" id="pm-paused"> Pause this project <span class="ov-muted">(skips the daily auto fetch &amp; sweep)</span></label>
     <div class="m-foot">
       <button class="btn btn-ghost" id="pm-delete" style="margin-right:auto;color:#c0392b" onclick="deleteProject()">Delete project</button>
       <button class="btn btn-ghost" onclick="closeModal('project-modal')">Cancel</button>
@@ -1000,17 +1007,19 @@ function tileColor(id) { let h = 0; for (const c of (id || '')) h = (h * 31 + c.
 function projectThumb(p, cls) {
   if (p.logo) return `<img src="${esc(p.logo)}" alt="${esc(p.name)}">`;
   const letter = (p.name || '?').trim()[0].toUpperCase();
-  return `<div class="${cls || 'gal-tile'}" style="background:${tileColor(p.id)}">${esc(letter)}</div>`;
+  return `<div class="${cls || 'gal-tile'}" style="background:${esc(p.primary || p.accent || tileColor(p.id))}">${esc(letter)}</div>`;
 }
 async function showGallery() {
   el('gallery').classList.remove('hidden');
+  applyAccent(TMG_PRIMARY, TMG_ACCENT);   // the main gallery uses TMG colours
   const grid = el('gallery-grid'); grid.innerHTML = '<div class="ov-muted">Loading projects…</div>';
   try {
     const res = await api('/api/projects');
     if (!res.ok) throw new Error(res.error || 'Could not load projects.');
     S.projects = res.projects || [];
-    grid.innerHTML = S.projects.map(p => `<div class="gal-card" onclick="enterProject('${esc(p.id)}')">
+    grid.innerHTML = S.projects.map(p => `<div class="gal-card${p.paused ? ' is-paused' : ''}" onclick="enterProject('${esc(p.id)}')">
         ${S.admin ? `<button class="gal-edit" onclick="event.stopPropagation();openProjectModal('${esc(p.id)}')" title="Edit">⋯</button>` : ''}
+        ${p.paused ? '<span class="pending-tag" style="position:absolute;top:12px;left:14px">paused</span>' : ''}
         ${projectThumb(p)}
         <div class="gal-name">${esc(p.name)}</div>
       </div>`).join('')
@@ -1023,8 +1032,8 @@ async function enterProject(id) {
   S.project = id; S.proj = p;
   try { S.cfg = await api('/api/keywords'); } catch (e) { S.cfg = {}; }
   S.keywords = S.cfg;
-  document.documentElement.style.setProperty('--verm', p.accent || '#0071e3');
-  // brand the rail with this project
+  // A client's dashboard takes on THE CLIENT'S colours (from their logo/branding).
+  applyAccent(p.primary || p.accent, p.accent || p.primary);
   el('rail-project').textContent = p.name;
   el('rail-projsub').textContent = p.short || 'Daily media monitoring';
   S.date = null; S.calYM = null; S.day = null;
@@ -1033,7 +1042,40 @@ async function enterProject(id) {
   await openDay(localDate());
   renderAll(); badges();
 }
-function backToGallery() { showGallery(); }
+function backToGallery() { applyAccent(TMG_PRIMARY, TMG_ACCENT); showGallery(); }
+
+/* ── colour theming: gallery = TMG colours, each project view = client colours ── */
+const TMG_PRIMARY = '#c41230', TMG_ACCENT = '#9e0f26';   // That Marketing Guy red
+const _h2rgb = (h) => { h = (h || '').replace('#', ''); if (h.length === 3) h = [...h].map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) || 0); };
+const _rgb2h = (r, g, b) => '#' + [r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0')).join('');
+const _darken = (h, a) => { const [r, g, b] = _h2rgb(h); return _rgb2h(r * (1 - a), g * (1 - a), b * (1 - a)); };
+const _tint = (h, a) => { const [r, g, b] = _h2rgb(h); return _rgb2h(r + (255 - r) * a, g + (255 - g) * a, b + (255 - b) * a); };
+function applyAccent(primary, deep) {
+  const root = document.documentElement.style;
+  primary = primary || '#0071e3'; deep = deep || _darken(primary, .2);
+  root.setProperty('--verm', primary);
+  root.setProperty('--verm-deep', deep);
+  root.setProperty('--verm-soft', _tint(primary, .9));
+  root.setProperty('--blue-mid', _tint(primary, .72));
+}
+// Pull the dominant brand colour out of a logo image (data URLs only — cross-origin
+// URLs taint the canvas and can't be sampled).
+function dominantColor(img) {
+  try {
+    const c = document.createElement('canvas'), w = c.width = 48, h = c.height = 48;
+    const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+    const d = ctx.getImageData(0, 0, w, h).data, buckets = {};
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3]; if (a < 128) continue;
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), sat = mx ? (mx - mn) / mx : 0, light = mx / 255;
+      if (sat < 0.28 || light < 0.12 || light > 0.95) continue;   // skip greys / near-white / near-black
+      const k = `${r >> 5},${g >> 5},${b >> 5}`, bk = buckets[k] || (buckets[k] = { r: 0, g: 0, b: 0, n: 0, s: 0 });
+      bk.r += r; bk.g += g; bk.b += b; bk.n++; bk.s += sat;
+    }
+    let best = null; for (const k in buckets) if (!best || buckets[k].s > best.s) best = buckets[k];
+    return best ? _rgb2h(best.r / best.n, best.g / best.n, best.b / best.n) : null;
+  } catch (e) { return null; }   // tainted canvas
+}
 
 /* ── Add / edit a project (TMG admin) ── */
 function openProjectModal(id) {
@@ -1042,6 +1084,10 @@ function openProjectModal(id) {
   el('project-modal-title').textContent = id ? 'Edit project' : 'New project';
   el('pm-name').value = p ? p.name : '';
   el('pm-short').value = p ? (p.short || '') : '';
+  el('pm-primary').value = p ? (p.primary || p.accent || '') : '';
+  el('pm-accent').value = p ? (p.accent || '') : '';
+  el('pm-logo-url').value = (p && p.logo && /^https?:/.test(p.logo)) ? p.logo : '';
+  el('pm-paused').checked = !!(p && p.paused);
   S.pmLogo = p ? (p.logo || null) : null;
   el('pm-logo-file').value = '';
   el('pm-delete').classList.toggle('hidden', !id || id === 'sps');
@@ -1051,18 +1097,44 @@ function openProjectModal(id) {
 }
 function renderProjectLogo() {
   const box = el('pm-logo-preview');
-  if (S.pmLogo) { box.innerHTML = `<img src="${esc(S.pmLogo)}">`; el('pm-logo-hint').textContent = 'Logo set.'; }
-  else { box.innerHTML = ''; el('pm-logo-hint').textContent = 'No logo yet — a letter tile is used.'; }
+  box.innerHTML = S.pmLogo ? `<img id="pm-logo-img" src="${esc(S.pmLogo)}" crossorigin="anonymous">` : '';
+}
+// Set the logo (from a data URL or a remote URL) and auto-derive colours if blank.
+function setProjectLogo(src) {
+  S.pmLogo = src || null;
+  renderProjectLogo();
+  if (!S.pmLogo) return;
+  const img = el('pm-logo-img');
+  if (img) img.onload = () => {
+    const col = dominantColor(img);
+    if (col) { if (!el('pm-primary').value.trim()) el('pm-primary').value = col; if (!el('pm-accent').value.trim()) el('pm-accent').value = _darken(col, .22); }
+  };
 }
 function onProjectLogo(ev) {
   const f = ev.target.files && ev.target.files[0]; if (!f) return;
   if (f.size > 2 * 1024 * 1024) { toast('Logo too large (max 2 MB).'); return; }
-  const r = new FileReader(); r.onload = () => { S.pmLogo = r.result; renderProjectLogo(); }; r.readAsDataURL(f);
+  const r = new FileReader(); r.onload = () => { el('pm-logo-url').value = ''; setProjectLogo(r.result); }; r.readAsDataURL(f);
 }
+// Paste a logo image straight into the open project modal (⌘V).
+document.addEventListener('paste', ev => {
+  if (el('project-modal').classList.contains('hidden')) return;
+  for (const it of (ev.clipboardData || {}).items || []) {
+    if (it.type && it.type.startsWith('image/')) {
+      const f = it.getAsFile(); if (f) { ev.preventDefault(); const r = new FileReader(); r.onload = () => { el('pm-logo-url').value = ''; setProjectLogo(r.result); }; r.readAsDataURL(f); return; }
+    }
+  }
+});
 async function saveProject() {
   const name = el('pm-name').value.trim(); if (!name) { toast('Project name is required.'); return; }
   const id = S.editProjectId || normHandle(name).slice(0, 24) || ('p' + Date.now());
-  const project = { id, name, short: el('pm-short').value.trim(), logo: S.pmLogo || null, accent: (S.proj && S.proj.accent) || '#0071e3' };
+  const url = el('pm-logo-url').value.trim();
+  const project = {
+    id, name, short: el('pm-short').value.trim(),
+    logo: url || S.pmLogo || null,
+    primary: el('pm-primary').value.trim() || null,
+    accent: el('pm-accent').value.trim() || el('pm-primary').value.trim() || null,
+    paused: el('pm-paused').checked,
+  };
   try {
     const res = await api('/api/projects', { action: 'save', project });
     if (!res.ok) throw new Error(res.error || 'Could not save.');
