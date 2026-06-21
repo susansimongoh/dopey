@@ -709,14 +709,15 @@ export async function runSocialFetch(project, date) {
   const limit = cfg.posts_per_account || 3;
   const acc = cfg.accounts || {};
   const errors = []; let results = [];
+  const rawCounts = {};   // posts each platform returned (pre-gate) — diagnostics for thin days
   const sweeps = [];
   if (acc.tiktok && acc.tiktok.length) sweeps.push(['TikTok', sweepTiktok, acc.tiktok]);
   if (acc.instagram && acc.instagram.length) sweeps.push(['Instagram', sweepInstagram, acc.instagram]);
   if (acc.facebook && acc.facebook.length) sweeps.push(['Facebook', sweepFacebook, acc.facebook]);
   if (acc.twitter && acc.twitter.length) sweeps.push(['X', sweepTwitter, acc.twitter]);
   for (const [name, fn, handles] of sweeps) {
-    try { results = results.concat(await fn(handles, cutoff, limit)); }
-    catch (e) { errors.push(`${name}: ${String(e).slice(0, 90)}`); }
+    try { const r = await fn(handles, cutoff, limit); rawCounts[name] = r.length; results = results.concat(r); }
+    catch (e) { rawCounts[name] = 'ERR'; errors.push(`${name}: ${String(e).slice(0, 90)}`); }
   }
   // Read text OUT of each post's image (vision OCR) and merge it into `extra`
   // alongside any TikTok subtitles, so on-image/spoken content feeds the relevance
@@ -739,7 +740,7 @@ export async function runSocialFetch(project, date) {
   for (const d of touched) {
     let day = (await getDay(project, d)) || freshDay(d);
     if (byDate[d] && byDate[d].length) { mergeClips(day, byDate[d], cfg); day = await rebuildStories(day, cfg); }
-    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; }
+    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; }
     await putDay(project, day);
   }
   return (await getDay(project, date)) || freshDay(date);
