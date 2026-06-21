@@ -333,9 +333,12 @@ export function mergeClips(day, results, cfg) {
   for (const it of results) {
     if (have.has(it.id) || gone.has(it.id)) continue;
     if (it.link && haveLinks.has(it.link)) continue;          // same URL = true duplicate
-    // Outlet RSS items are trusted by SOURCE (a monitored SG/MY outlet), so they
-    // skip the keyword gate but STILL must pass the SPS relevance gate on the title.
-    if (!it.outlet && !valid.has(it.kw)) continue;
+    // Social posts come ONLY from configured accounts (we scrape the watchlist
+    // handles), so they're on-watchlist by construction — skip the keyword
+    // membership check (FB/X return display names, not the config slug, so an
+    // exact-match check wrongly drops every one of them). Outlet RSS items are
+    // trusted by source. Everything else (news) must hit a configured keyword.
+    if (!it.outlet && !SOCIAL_PLATS.has(it.plat) && !valid.has(it.kw)) continue;
     // SPS/YRSG own posts and CARE-partner posts are intrinsically in scope (their
     // own activity); everyone else (other accounts + news) must be SPS-relevant
     // — checked against caption PLUS any OCR/subtitle text read from the media.
@@ -679,12 +682,15 @@ async function sweepFacebook(handles, cutoff, limit) {
 }
 
 async function sweepTwitter(handles, cutoff, limit) {
-  // apidojo/tweet-scraper: pay-per-result X/Twitter scraper. `start` filters
-  // server-side (YYYY-MM-DD); maxItems is a global cap, so scale by handle count.
-  const start = cutoff.toISOString().slice(0, 10);
+  // apidojo/tweet-scraper: pay-per-result X/Twitter scraper. The most reliable
+  // way to pull a user's timeline is the `from:` search operator (twitterHandles
+  // + start returned 0). `since:` bounds the window server-side; we still filter
+  // by cutoff in code. maxItems is a global cap, so scale by handle count.
+  const since = cutoff.toISOString().slice(0, 10);
   const items = await apifyRun('apidojo~tweet-scraper', {
-    twitterHandles: handles, maxItems: Math.max(limit * handles.length, handles.length),
-    sort: 'Latest', start, includeSearchTerms: false, onlyVerifiedUsers: false,
+    searchTerms: handles.map((h) => `from:${h} since:${since}`),
+    maxItems: Math.max(limit * handles.length, handles.length * 2),
+    sort: 'Latest', includeSearchTerms: false, onlyVerifiedUsers: false,
   });
   const out = [];
   for (const t of items) {
