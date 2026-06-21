@@ -279,11 +279,31 @@ const relevant = (text, terms) => {
   return false;
 };
 
+// Per-project relevance with a localisation gate. An item is relevant if it
+// matches an ANCHOR (a self-localising term that passes alone, e.g. "Changi
+// Prison", "SPS", "Yellow Ribbon"), OR it matches a generic TOPIC term
+// (e.g. "prison", "death penalty") AND ALSO carries a LOCALE signal in the same
+// text (e.g. "Singapore", "Changi", "MHA"). This keeps foreign/global prison &
+// death-penalty content out (which generic terms alone would let in). If a
+// project has no `locale` list configured, topics pass alone (legacy behaviour,
+// so non-localised projects keep working until they're set up).
+function makeRelevance(cfg) {
+  const lc = (a) => (a || []).filter(Boolean).map((s) => String(s).toLowerCase());
+  const anchors = lc([...(cfg.anchors || []), ...((cfg.keywords || []).map((k) => k.q))]);
+  const topics = lc(cfg.topics || cfg.topic_terms || SPS_CORE_TERMS);
+  const locale = lc(cfg.locale);
+  return (text) => {
+    if (anchors.length && relevant(text, anchors)) return true;
+    if (!relevant(text, topics)) return false;
+    return locale.length ? relevant(text, locale) : true;
+  };
+}
+
 // A post is exempt from the keyword-relevance gate only when it's an actual SOCIAL
 // post from an SPS/YRSG own account or a CARE partner (their own activity is in
 // scope). News items must NOT qualify — their `kw` is a search phrase like
 // "Singapore Prison Service" that would otherwise look like an own-account handle.
-const SOCIAL_PLATS = new Set(['Facebook', 'Instagram', 'TikTok', 'YouTube', 'LinkedIn']);
+const SOCIAL_PLATS = new Set(['Facebook', 'Instagram', 'TikTok', 'YouTube', 'LinkedIn', 'X']);
 const ownOrCarePost = (cfg, it) => SOCIAL_PLATS.has(it.plat) &&
   !!(ownOrg(cfg, it.kw) || ownOrg(cfg, it.pub) || isCarePartner(cfg, it.kw) || isCarePartner(cfg, it.pub));
 
@@ -304,7 +324,7 @@ function itemToClip(it) {
 export function mergeClips(day, results, cfg) {
   const valid = new Set((cfg.keywords || []).map((k) => k.q));
   for (const hs of Object.values(cfg.accounts || {})) for (const h of hs) valid.add('@' + h);
-  const terms = topicTerms(cfg);
+  const isRelevant = makeRelevance(cfg);
   day.clips = day.clips || [];
   day.dismissed = day.dismissed || [];
   const have = new Set(day.clips.map((c) => c.id));
@@ -319,7 +339,7 @@ export function mergeClips(day, results, cfg) {
     // SPS/YRSG own posts and CARE-partner posts are intrinsically in scope (their
     // own activity); everyone else (other accounts + news) must be SPS-relevant
     // — checked against caption PLUS any OCR/subtitle text read from the media.
-    if (!ownOrCarePost(cfg, it) && !relevant((it.title || '') + ' ' + (it.extra || ''), terms)) continue;
+    if (!ownOrCarePost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''))) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
   }
@@ -330,12 +350,12 @@ export function mergeClips(day, results, cfg) {
 // clean up clips added before a relevance fix). Manually-added clips (no `src`)
 // are always kept. Own/CARE posts are exempt, same as mergeClips.
 export function pruneClips(day, cfg) {
-  const terms = topicTerms(cfg);
+  const isRelevant = makeRelevance(cfg);
   const before = (day.clips || []).length;
   day.clips = (day.clips || []).filter((c) => {
     if (!c.src) return true;          // manually added → keep
     if (ownOrCarePost(cfg, c)) return true; // own/CARE social post → in scope
-    return relevant((c.subject || '') + ' ' + (c.extra || ''), terms);
+    return isRelevant((c.subject || '') + ' ' + (c.extra || ''));
   });
   return before - (day.clips || []).length;
 }
@@ -558,19 +578,35 @@ async function socialItem(plat, handle, title, link, dt, eng, img, extra) {
     extra: (extra || '').trim().slice(0, 1000), status: 'new' };
 }
 
+// Fetch an image, falling back to a hotlink-bypass proxy. IG/FB CDN URLs 403
+// when fetched server-side, so we retry through images.weserv.nl (a free image
+// proxy that re-fetches and re-serves), which recovers most of them.
+async function fetchImage(imgUrl) {
+  const tryFetch = async (u) => {
+    const r = await fetch(u, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
+    if (!r.ok) return null;
+    const ct = (r.headers.get('content-type') || '').split(';')[0];
+    if (!/^image\//.test(ct)) return null;
+    const buf = await r.arrayBuffer();
+    if (buf.byteLength > 4 * 1024 * 1024) return null;
+    return { ct, data: Buffer.from(buf).toString('base64') };
+  };
+  try { const a = await tryFetch(imgUrl); if (a) return a; } catch {}
+  try {
+    const proxied = 'https://images.weserv.nl/?url=' + encodeURIComponent(imgUrl.replace(/^https?:\/\//, '')) + '&output=jpg';
+    const b = await tryFetch(proxied); if (b) return { ct: 'image/jpeg', data: b.data };
+  } catch {}
+  return null;
+}
+
 // Read text OUT of a post's image via Gemini vision (posters/graphics/title cards).
-// Best-effort: IG/FB CDN images often 403 server-side, so this can return ''.
 async function imageText(imgUrl) {
   const key = Netlify.env.get('GEMINI_API_KEY');
   if (!key || !imgUrl) return '';
   try {
-    const r = await fetch(imgUrl, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
-    if (!r.ok) return '';
-    const ct = (r.headers.get('content-type') || '').split(';')[0];
-    if (!/^image\//.test(ct)) return '';
-    const buf = await r.arrayBuffer();
-    if (buf.byteLength > 4 * 1024 * 1024) return '';
-    const data = Buffer.from(buf).toString('base64');
+    const got = await fetchImage(imgUrl);
+    if (!got) return '';
+    const { ct, data } = got;
     const body = { contents: [{ parts: [
       { inlineData: { mimeType: ct, data } },
       { text: 'Transcribe ALL text visible in this image verbatim (captions, posters, on-screen graphics, title cards). If there is no text, reply with nothing. Output only the transcribed text.' },
@@ -600,7 +636,7 @@ async function tiktokSubs(v) {
       .replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 800);
   } catch { return ''; }
 }
-const when = (v) => { if (!v) return null; try { return typeof v === 'number' ? new Date(v * 1000) : new Date(v); } catch { return null; } };
+const when = (v) => { if (!v) return null; try { const d = typeof v === 'number' ? new Date(v * 1000) : new Date(v); return isNaN(d.getTime()) ? null : d; } catch { return null; } };
 
 async function sweepTiktok(handles, cutoff, limit) {
   const items = await apifyRun('clockworks~tiktok-scraper', { profiles: handles, resultsPerPage: limit, profileScrapeSections: ['videos'], profileSorting: 'latest', excludePinnedPosts: true, shouldDownloadVideos: false, shouldDownloadCovers: false, shouldDownloadSubtitles: true, shouldDownloadSlideshowImages: false });
@@ -642,6 +678,28 @@ async function sweepFacebook(handles, cutoff, limit) {
   return out;
 }
 
+async function sweepTwitter(handles, cutoff, limit) {
+  // apidojo/tweet-scraper: pay-per-result X/Twitter scraper. `start` filters
+  // server-side (YYYY-MM-DD); maxItems is a global cap, so scale by handle count.
+  const start = cutoff.toISOString().slice(0, 10);
+  const items = await apifyRun('apidojo~tweet-scraper', {
+    twitterHandles: handles, maxItems: Math.max(limit * handles.length, handles.length),
+    sort: 'Latest', start, includeSearchTerms: false, onlyVerifiedUsers: false,
+  });
+  const out = [];
+  for (const t of items) {
+    const dt = when(t.createdAt || t.created_at); const link = t.url || t.twitterUrl;
+    if (!dt || !link || dt < cutoff) continue;
+    const h = (t.author && (t.author.userName || t.author.screen_name)) || t.username || 'unknown';
+    let img = null;
+    const media = (t.extendedEntities && t.extendedEntities.media) || t.media || [];
+    if (Array.isArray(media) && media[0]) img = media[0].media_url_https || media[0].media_url || (typeof media[0] === 'string' ? media[0] : null);
+    out.push(await socialItem('X', h, t.fullText || t.text, link, dt,
+      { plays: t.viewCount || 0, likes: t.likeCount || 0, comments: t.replyCount || 0, shares: (t.retweetCount || 0) + (t.quoteCount || 0) }, img));
+  }
+  return out;
+}
+
 export async function runSocialFetch(project, date) {
   if (!APIFY_TOKEN()) throw new Error('APIFY_TOKEN not set');
   const cfg = await getWatchlist(project);
@@ -655,6 +713,7 @@ export async function runSocialFetch(project, date) {
   if (acc.tiktok && acc.tiktok.length) sweeps.push(['TikTok', sweepTiktok, acc.tiktok]);
   if (acc.instagram && acc.instagram.length) sweeps.push(['Instagram', sweepInstagram, acc.instagram]);
   if (acc.facebook && acc.facebook.length) sweeps.push(['Facebook', sweepFacebook, acc.facebook]);
+  if (acc.twitter && acc.twitter.length) sweeps.push(['X', sweepTwitter, acc.twitter]);
   for (const [name, fn, handles] of sweeps) {
     try { results = results.concat(await fn(handles, cutoff, limit)); }
     catch (e) { errors.push(`${name}: ${String(e).slice(0, 90)}`); }
