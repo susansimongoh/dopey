@@ -279,23 +279,6 @@ const relevant = (text, terms) => {
   return false;
 };
 
-// Singapore news outlets. For a NEWS item whose source is one of these, the
-// outlet itself IS the locale signal — a prison/death-penalty topic match is
-// enough even when the headline doesn't repeat "Singapore" (e.g. a Straits Times
-// "Man jailed 30 months…" story). Foreign outlets (hypefresh, global blogs) are
-// NOT here, so they still need a locale term in the text → stay out. Matched as a
-// lowercased substring of the Google/Bing source name; distinctive tokens only
-// ('today'/'cna' bare would collide with "USA Today" etc., so use 'todayonline').
-const SG_OUTLETS = [
-  'straits times', 'channel newsasia', 'channelnewsasia', 'todayonline',
-  'mothership', 'asiaone', 'the new paper', 'tnp.sg', 'independent singapore',
-  'lianhe zaobao', 'zaobao', 'berita harian', '8world', 'shin min', 'stomp',
-  'mustsharenews', 'must share news', 'coconuts singapore', 'rice media',
-  'vulcan post', 'the online citizen', 'new naratif', 'yahoo singapore',
-  'wake up singapore', 'wakeup singapore', 'sg.news.yahoo',
-];
-const isSgOutlet = (pub) => { const p = (pub || '').toLowerCase(); return SG_OUTLETS.some((o) => p.includes(o)); };
-
 // Per-project relevance with a localisation gate. An item is relevant if it
 // matches an ANCHOR (a self-localising term that passes alone, e.g. "Changi
 // Prison", "SPS", "Yellow Ribbon"), OR it matches a generic TOPIC term
@@ -321,9 +304,9 @@ function makeRelevance(cfg) {
   return (text, pub, social) => {
     if (anchors.length && relevant(text, anchors)) return true;
     if (!relevant(text, topics)) return false;
-    if (!locale.length) return true;                  // project not localised → legacy
-    if (social) return true;                           // curated SG account → topic suffices
-    return relevant(text, locale) || isSgOutlet(pub);  // news → locale word OR SG outlet
+    if (!locale.length) return true;     // project not localised → legacy behaviour
+    if (social) return true;             // curated SG account → topic suffices
+    return relevant(text, locale);       // news → needs a Singapore locale word
   };
 }
 
@@ -393,7 +376,13 @@ export function pruneClips(day, cfg) {
 
 // ── news / reddit / youtube fetchers ─────────────────────────────────────
 async function googleNews(kw, lookback, cutoff) {
-  const q = encodeURIComponent(`"${kw.q}" when:${lookback}d`);
+  // NOT quoted: an exact-phrase query ("Changi Prison") matches almost nothing
+  // (Google returns bus stops / rugby / foreign noise and ~0 real SG prison
+  // stories). An unquoted AND-query ("Changi Prison") recalls the actual SG court/
+  // prison coverage; the localisation gate in mergeClips then drops the foreign
+  // results (it strips Google's " - Source" title suffix first, so a story from a
+  // Singapore-NAMED outlet doesn't pass on the source name alone).
+  const q = encodeURIComponent(`${kw.q} when:${lookback}d`);
   const xml = await httpText(`https://news.google.com/rss/search?q=${q}&hl=en-SG&gl=SG&ceid=SG:en`);
   const out = [];
   for (const it of blocks(xml, 'item')) {
@@ -410,7 +399,7 @@ async function googleNews(kw, lookback, cutoff) {
 }
 
 async function bingNews(kw, cutoff) {
-  const q = encodeURIComponent(`"${kw.q}"`);
+  const q = encodeURIComponent(kw.q);   // unquoted — see googleNews note
   const xml = await httpText(`https://www.bing.com/news/search?q=${q}&format=rss`);
   const out = [];
   for (const it of blocks(xml, 'item')) {
