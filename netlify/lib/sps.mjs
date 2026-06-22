@@ -754,11 +754,65 @@ async function sweepFacebook(handles, cutoff, limit) {
   return out;
 }
 
+// ── SocialData.tools helpers ───────────────────────────────────────────────
+// Direct REST API for X/Twitter. $0.0002/tweet. Set SOCIALDATA_API_KEY in
+// Netlify env to activate; falls back to apidojo~tweet-scraper if not set.
+// NOTE: the /twitter/search endpoint is marked "Limited Access" in their docs —
+// verify your account has access at docs.socialdata.tools before setting the key.
+
+async function sdSearch(query, type, cutoff, maxItems) {
+  const key = Netlify.env.get('SOCIALDATA_API_KEY');
+  if (!key) return null;
+  const base = 'https://api.socialdata.tools/twitter/search';
+  const tweets = [];
+  let cursor = null;
+  while (tweets.length < maxItems) {
+    let url = `${base}?query=${encodeURIComponent(query)}&type=${type}`;
+    if (cursor) url += '&cursor=' + encodeURIComponent(cursor);
+    const r = await fetch(url, {
+      headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!r.ok) throw new Error(`SocialData ${r.status}`);
+    const d = await r.json();
+    const batch = (d.tweets || []).filter((t) => { const dt = when(t.tweet_created_at); return dt && dt >= cutoff; });
+    tweets.push(...batch);
+    if (!d.next_cursor || !batch.length || !(d.tweets || []).length) break;
+    cursor = d.next_cursor;
+  }
+  return tweets;
+}
+
+async function parseSdTweet(t) {
+  const h = (t.user && t.user.screen_name) || 'unknown';
+  if (!t.id_str) return null;
+  const link = `https://twitter.com/${h}/status/${t.id_str}`;
+  const dt = when(t.tweet_created_at);
+  if (!dt) return null;
+  let img = null;
+  const media = (t.entities && t.entities.media) || [];
+  if (media[0]) img = media[0].media_url_https || media[0].media_url_http || null;
+  return socialItem('X', h, t.full_text || t.text, link, dt, {
+    plays: t.views_count || 0, likes: t.favorite_count || 0,
+    comments: t.reply_count || 0, shares: (t.retweet_count || 0) + (t.quote_count || 0),
+  }, img);
+}
+
 async function sweepTwitter(handles, cutoff, limit) {
-  // apidojo/tweet-scraper: pay-per-result X/Twitter scraper. The most reliable
-  // way to pull a user's timeline is the `from:` search operator (twitterHandles
-  // + start returned 0). `since:` bounds the window server-side; we still filter
-  // by cutoff in code. maxItems is a global cap, so scale by handle count.
+  // Prefer SocialData.tools direct REST API when SOCIALDATA_API_KEY is set.
+  // Falls back to apidojo/tweet-scraper actor when key is absent.
+  if (Netlify.env.get('SOCIALDATA_API_KEY')) {
+    const sinceTs = Math.floor(cutoff.getTime() / 1000);
+    const out = [];
+    for (const h of handles) {
+      try {
+        const tweets = await sdSearch(`from:${h} since_time:${sinceTs} -filter:replies`, 'Latest', cutoff, limit);
+        if (tweets) for (const t of tweets) { const it = await parseSdTweet(t); if (it) out.push(it); }
+      } catch (e) { /* skip handle on error, logged by caller */ }
+    }
+    return out;
+  }
+  // Apify fallback
   const since = cutoff.toISOString().slice(0, 10);
   const items = await apifyRun('apidojo~tweet-scraper', {
     searchTerms: handles.map((h) => `from:${h} since:${since}`),
@@ -845,8 +899,20 @@ async function searchFacebook(queries, cutoff, limit) {
 }
 
 async function searchTwitter(queries, cutoff, limit) {
-  // Same actor as sweepTwitter but without the `from:handle` constraint —
-  // searches all of X for the query terms, surfacing any matching public account.
+  // Keyword-first X search: no `from:` constraint so any public account surfaces.
+  // Prefer SocialData.tools when SOCIALDATA_API_KEY is set; Apify as fallback.
+  if (Netlify.env.get('SOCIALDATA_API_KEY')) {
+    const sinceTs = Math.floor(cutoff.getTime() / 1000);
+    const out = [];
+    for (const q of queries) {
+      try {
+        const tweets = await sdSearch(`${q} since_time:${sinceTs}`, 'Latest', cutoff, limit);
+        if (tweets) for (const t of tweets) { const it = await parseSdTweet(t); if (it) { it.discovered = true; out.push(it); } }
+      } catch (e) { /* skip query on error, logged by caller */ }
+    }
+    return out;
+  }
+  // Apify fallback
   const since = cutoff.toISOString().slice(0, 10);
   const items = await apifyRun('apidojo~tweet-scraper', {
     searchTerms: queries.map((q) => `${q} since:${since}`),
@@ -862,7 +928,7 @@ async function searchTwitter(queries, cutoff, limit) {
     const media = (t.extendedEntities && t.extendedEntities.media) || t.media || [];
     if (Array.isArray(media) && media[0]) img = media[0].media_url_https || media[0].media_url || (typeof media[0] === 'string' ? media[0] : null);
     const it = await socialItem('X', h, t.fullText || t.text, link, dt,
-      { plays: t.viewCount||0, likes: t.likeCount||0, comments: t.replyCount||0, shares: (t.retweetCount||0)+(t.quoteCount||0) }, img);
+      { plays: t.viewCount || 0, likes: t.likeCount || 0, comments: t.replyCount || 0, shares: (t.retweetCount || 0) + (t.quoteCount || 0) }, img);
     it.discovered = true; out.push(it);
   }
   return out;
