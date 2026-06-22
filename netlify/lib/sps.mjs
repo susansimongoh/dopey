@@ -279,6 +279,23 @@ const relevant = (text, terms) => {
   return false;
 };
 
+// Singapore news outlets. For a NEWS item whose source is one of these, the
+// outlet itself IS the locale signal — a prison/death-penalty topic match is
+// enough even when the headline doesn't repeat "Singapore" (e.g. a Straits Times
+// "Man jailed 30 months…" story). Foreign outlets (hypefresh, global blogs) are
+// NOT here, so they still need a locale term in the text → stay out. Matched as a
+// lowercased substring of the Google/Bing source name; distinctive tokens only
+// ('today'/'cna' bare would collide with "USA Today" etc., so use 'todayonline').
+const SG_OUTLETS = [
+  'straits times', 'channel newsasia', 'channelnewsasia', 'todayonline',
+  'mothership', 'asiaone', 'the new paper', 'tnp.sg', 'independent singapore',
+  'lianhe zaobao', 'zaobao', 'berita harian', '8world', 'shin min', 'stomp',
+  'mustsharenews', 'must share news', 'coconuts singapore', 'rice media',
+  'vulcan post', 'the online citizen', 'new naratif', 'yahoo singapore',
+  'wake up singapore', 'wakeup singapore', 'sg.news.yahoo',
+];
+const isSgOutlet = (pub) => { const p = (pub || '').toLowerCase(); return SG_OUTLETS.some((o) => p.includes(o)); };
+
 // Per-project relevance with a localisation gate. An item is relevant if it
 // matches an ANCHOR (a self-localising term that passes alone, e.g. "Changi
 // Prison", "SPS", "Yellow Ribbon"), OR it matches a generic TOPIC term
@@ -292,10 +309,21 @@ function makeRelevance(cfg) {
   const anchors = lc([...(cfg.anchors || []), ...((cfg.keywords || []).map((k) => k.q))]);
   const topics = lc(cfg.topics || cfg.topic_terms || SPS_CORE_TERMS);
   const locale = lc(cfg.locale);
-  return (text) => {
+  // (text, pub, social) → relevant?
+  //   text   = caption/headline + any OCR/subtitle text
+  //   pub    = source name (news) — used for the SG-outlet locale signal
+  //   social = post from a curated watchlist account (TikTok/IG/FB/X/YT). These
+  //            accounts were hand-picked as Singapore prison / death-penalty voices,
+  //            so the LOCALE is implied by the account; a topic match alone is
+  //            enough (their captions often don't repeat "Singapore"). The locale
+  //            co-signal is reserved for keyword-driven NEWS, where short Google
+  //            queries pull in fuzzy/foreign results that must be filtered.
+  return (text, pub, social) => {
     if (anchors.length && relevant(text, anchors)) return true;
     if (!relevant(text, topics)) return false;
-    return locale.length ? relevant(text, locale) : true;
+    if (!locale.length) return true;                  // project not localised → legacy
+    if (social) return true;                           // curated SG account → topic suffices
+    return relevant(text, locale) || isSgOutlet(pub);  // news → locale word OR SG outlet
   };
 }
 
@@ -342,7 +370,7 @@ export function mergeClips(day, results, cfg) {
     // SPS/YRSG own posts and CARE-partner posts are intrinsically in scope (their
     // own activity); everyone else (other accounts + news) must be SPS-relevant
     // — checked against caption PLUS any OCR/subtitle text read from the media.
-    if (!ownOrCarePost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''))) continue;
+    if (!ownOrCarePost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''), it.pub, SOCIAL_PLATS.has(it.plat))) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
   }
@@ -358,7 +386,7 @@ export function pruneClips(day, cfg) {
   day.clips = (day.clips || []).filter((c) => {
     if (!c.src) return true;          // manually added → keep
     if (ownOrCarePost(cfg, c)) return true; // own/CARE social post → in scope
-    return isRelevant((c.subject || '') + ' ' + (c.extra || ''));
+    return isRelevant((c.subject || '') + ' ' + (c.extra || ''), c.pub, SOCIAL_PLATS.has(c.plat));
   });
   return before - (day.clips || []).length;
 }
