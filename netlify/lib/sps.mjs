@@ -266,14 +266,18 @@ function topicTerms(cfg) {
   for (const kw of cfg.keywords || []) t.add(kw.q.toLowerCase());
   return t;
 }
-// Word-boundary match: the term must START at a word boundary (it may still be a
-// prefix of a longer word, e.g. 'rehabilitat' → 'rehabilitation', 'death penalt'
+// Word-boundary match: a Latin term must START at a word boundary (it may still be
+// a prefix of a longer word, e.g. 'rehabilitat' → 'rehabilitation', 'death penalt'
 // → 'death penalty'). This stops substring false positives like 'hanging' inside
-// "changing" or 'hanged' inside "changed".
+// "changing" or 'hanged' inside "changed". CJK/non-Latin terms (e.g. Chinese
+// '监狱', Malay terms behave like Latin) have NO \b boundary between ideographs, so
+// `\b监狱` never matches — for any term without a Latin letter we match as a plain
+// substring instead.
 const relevant = (text, terms) => {
   const low = (text || '').toLowerCase();
   for (const t of terms) {
-    const re = new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = /[a-z]/i.test(t) ? new RegExp('\\b' + esc) : new RegExp(esc);
     if (re.test(low)) return true;
   }
   return false;
@@ -287,26 +291,38 @@ const relevant = (text, terms) => {
 // death-penalty content out (which generic terms alone would let in). If a
 // project has no `locale` list configured, topics pass alone (legacy behaviour,
 // so non-localised projects keep working until they're set up).
+// Singapore vernacular outlets (Chinese / Malay). SG vernacular court headlines
+// rarely write the country name (it's implied), so a locale-WORD gate drops them;
+// and a "skip locale" gate lets in Malaysian/Indonesian vernacular news from the
+// same query. The reliable Singapore signal for vernacular items is therefore the
+// OUTLET: trust SG vernacular mastheads, drop Malaysian (Astro Awani, Harian
+// Metro, FMT) and other foreign ones. Matched as a lowercased substring of source.
+const SG_VERN_OUTLETS = [
+  'berita mediacorp', 'beritaharian', 'berita harian', '8world', '8视界', '8 world',
+  'shin min', '新明日报', '新明', 'zaobao', '联合早报', 'lianhe zaobao', 'tabla',
+];
+const isSgVernOutlet = (pub) => { const p = (pub || '').toLowerCase(); return SG_VERN_OUTLETS.some((o) => p.includes(o)); };
+
 function makeRelevance(cfg) {
   const lc = (a) => (a || []).filter(Boolean).map((s) => String(s).toLowerCase());
   const anchors = lc([...(cfg.anchors || []), ...((cfg.keywords || []).map((k) => k.q))]);
   const topics = lc(cfg.topics || cfg.topic_terms || SPS_CORE_TERMS);
   const locale = lc(cfg.locale);
-  // (text, pub, social) → relevant?
-  //   text   = caption/headline + any OCR/subtitle text
-  //   pub    = source name (news) — used for the SG-outlet locale signal
-  //   social = post from a curated watchlist account (TikTok/IG/FB/X/YT). These
-  //            accounts were hand-picked as Singapore prison / death-penalty voices,
-  //            so the LOCALE is implied by the account; a topic match alone is
-  //            enough (their captions often don't repeat "Singapore"). The locale
-  //            co-signal is reserved for keyword-driven NEWS, where short Google
-  //            queries pull in fuzzy/foreign results that must be filtered.
-  return (text, pub, social) => {
+  // (text, pub, skipLocale, vern) → relevant?
+  //   text       = caption/headline + any OCR/subtitle text
+  //   pub        = source name — the locale signal for vernacular items
+  //   skipLocale = item already known SG-scoped, topic alone suffices. True for
+  //                (a) social posts from curated SG accounts and (b) news from an
+  //                SG-scoped English keyword (localTrust, e.g. "Singapore jailed").
+  //   vern       = Chinese/Malay item — gate on topic + SG vernacular OUTLET
+  //                (a locale word won't appear; "skip locale" would admit Malaysia).
+  return (text, pub, skipLocale, vern) => {
     if (anchors.length && relevant(text, anchors)) return true;
     if (!relevant(text, topics)) return false;
-    if (!locale.length) return true;     // project not localised → legacy behaviour
-    if (social) return true;             // curated SG account → topic suffices
-    return relevant(text, locale);       // news → needs a Singapore locale word
+    if (vern) return isSgVernOutlet(pub);  // vernacular → must be an SG masthead
+    if (!locale.length) return true;       // project not localised → legacy behaviour
+    if (skipLocale) return true;           // already SG-scoped → topic suffices
+    return relevant(text, locale);         // else news → needs a Singapore locale word
   };
 }
 
@@ -335,6 +351,11 @@ function itemToClip(it) {
 export function mergeClips(day, results, cfg) {
   const valid = new Set((cfg.keywords || []).map((k) => k.q));
   for (const hs of Object.values(cfg.accounts || {})) for (const h of hs) valid.add('@' + h);
+  // Keywords flagged localTrust are SG-scoped queries ("Singapore jailed", a
+  // vernacular SG outlet, …) — their results are Singapore by construction, so
+  // they skip the locale co-signal (a topic match is enough).
+  const trustKw = new Set((cfg.keywords || []).filter((k) => k.localTrust).map((k) => k.q));
+  const skipLocaleFor = (it) => SOCIAL_PLATS.has(it.plat) || !!it.localTrust || trustKw.has(it.kw);
   const isRelevant = makeRelevance(cfg);
   day.clips = day.clips || [];
   day.dismissed = day.dismissed || [];
@@ -353,7 +374,7 @@ export function mergeClips(day, results, cfg) {
     // SPS/YRSG own posts and CARE-partner posts are intrinsically in scope (their
     // own activity); everyone else (other accounts + news) must be SPS-relevant
     // — checked against caption PLUS any OCR/subtitle text read from the media.
-    if (!ownOrCarePost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''), it.pub, SOCIAL_PLATS.has(it.plat))) continue;
+    if (!ownOrCarePost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''), it.pub, skipLocaleFor(it), !!it.vern)) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
   }
@@ -365,11 +386,15 @@ export function mergeClips(day, results, cfg) {
 // are always kept. Own/CARE posts are exempt, same as mergeClips.
 export function pruneClips(day, cfg) {
   const isRelevant = makeRelevance(cfg);
+  const trustKw = new Set((cfg.keywords || []).filter((k) => k.localTrust).map((k) => k.q));
   const before = (day.clips || []).length;
   day.clips = (day.clips || []).filter((c) => {
     if (!c.src) return true;          // manually added → keep
     if (ownOrCarePost(cfg, c)) return true; // own/CARE social post → in scope
-    return isRelevant((c.subject || '') + ' ' + (c.extra || ''), c.pub, SOCIAL_PLATS.has(c.plat));
+    const skipLocale = SOCIAL_PLATS.has(c.plat) || trustKw.has(c.kw);
+    // vernacular item: has CJK text, or came from an SG vernacular masthead
+    const vern = /[㐀-鿿]/.test(c.subject || '') || isSgVernOutlet(c.pub);
+    return isRelevant((c.subject || '') + ' ' + (c.extra || ''), c.pub, skipLocale, vern);
   });
   return before - (day.clips || []).length;
 }
@@ -382,8 +407,16 @@ async function googleNews(kw, lookback, cutoff) {
   // prison coverage; the localisation gate in mergeClips then drops the foreign
   // results (it strips Google's " - Source" title suffix first, so a story from a
   // Singapore-NAMED outlet doesn't pass on the source name alone).
+  // kw.lang selects the Google News edition: default English (en-SG); 'ms' pulls
+  // the Malay edition (ms-SG), which surfaces Berita Mediacorp / Berita Harian
+  // court coverage. (A Chinese zh-SG edition is not served by Google News, so
+  // Shin Min / 8World are reached via their RSS feeds instead.) Items from a
+  // non-English edition are flagged `vern` → gated on topic + SG vernacular outlet.
+  const ED = { ms: { hl: 'ms-SG', ceid: 'SG:ms' } };
+  const ed = ED[kw.lang] || { hl: 'en-SG', ceid: 'SG:en' };
+  const vern = !!kw.lang && kw.lang !== 'en';
   const q = encodeURIComponent(`${kw.q} when:${lookback}d`);
-  const xml = await httpText(`https://news.google.com/rss/search?q=${q}&hl=en-SG&gl=SG&ceid=SG:en`);
+  const xml = await httpText(`https://news.google.com/rss/search?q=${q}&hl=${ed.hl}&gl=SG&ceid=${ed.ceid}`);
   const out = [];
   for (const it of blocks(xml, 'item')) {
     const title0 = tag(it, 'title'); const link = tag(it, 'link');
@@ -393,7 +426,7 @@ async function googleNews(kw, lookback, cutoff) {
     let title = title0;
     if (pub && title.endsWith(' - ' + pub)) title = title.slice(0, -(' - ' + pub).length);
     out.push({ id: await sha1_12(link), src: 'Google News', kw: kw.q, cat: kw.cat || 'daily_news',
-      title, link, pub: pub || 'Unknown', plat: '', published: dt.toISOString(), eng: null, status: 'new' });
+      title, link, pub: pub || 'Unknown', plat: '', published: dt.toISOString(), eng: null, vern, status: 'new' });
   }
   return out;
 }
@@ -478,6 +511,13 @@ const OUTLET_FEEDS = [
   { name: 'Must Share News', url: 'https://mustsharenews.com/feed/' },
   { name: 'Rice Media', url: 'https://www.ricemedia.co/feed/' },
   { name: 'Berita Harian', url: 'https://www.beritaharian.sg/rss.xml' },
+  // Mediacorp vernacular desks (Chinese / Malay) — the SPS daily report draws
+  // most of its court/sentencing items from these. Same Drupal RSS endpoint as
+  // CNA. Items are Chinese/Malay, so the relevance gate matches them via the
+  // vernacular topic+locale terms in the project config, and Gemini translates
+  // them into the English report summary.
+  { name: '8World', url: 'https://www.8world.com/api/v1/rss-outbound-feed?_format=xml', vern: true },
+  { name: 'Berita Mediacorp', url: 'https://berita.mediacorp.sg/api/v1/rss-outbound-feed?_format=xml', vern: true },
 ];
 async function outletFeeds(cutoff, errors) {
   const out = [];
@@ -494,7 +534,7 @@ async function outletFeeds(cutoff, errors) {
         const im = it.match(/<enclosure[^>]*url="([^"]+)"/) || it.match(/<media:content[^>]*url="([^"]+)"/) || it.match(/<media:thumbnail[^>]*url="([^"]+)"/);
         out.push({ id: await sha1_12(link), src: f.name, kw: f.name, cat: 'daily_news',
           title, link, pub: f.name, plat: '', published: dt.toISOString(),
-          eng: null, img: im ? decode(im[1]) : null, outlet: true, status: 'new' });
+          eng: null, img: im ? decode(im[1]) : null, outlet: true, vern: !!f.vern, status: 'new' });
       }
     } catch (e) { errors.push(`${f.name}: ${String(e).slice(0, 50)}`); }
   }
