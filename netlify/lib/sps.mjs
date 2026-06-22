@@ -298,10 +298,22 @@ const relevant = (text, terms) => {
 // OUTLET: trust SG vernacular mastheads, drop Malaysian (Astro Awani, Harian
 // Metro, FMT) and other foreign ones. Matched as a lowercased substring of source.
 const SG_VERN_OUTLETS = [
-  'berita mediacorp', 'beritaharian', 'berita harian', '8world', '8视界', '8 world',
-  'shin min', '新明日报', '新明', 'zaobao', '联合早报', 'lianhe zaobao', 'tabla',
+  'berita mediacorp', 'beritamediacorp', 'beritaharian', 'berita harian', 'bharian',
+  '8world', '8视界', '8 world', 'shin min', '新明日报', '新明', 'zaobao', '联合早报',
+  'lianhe zaobao', 'tabla', 'tamil murasu', 'tamilmurasu',
 ];
 const isSgVernOutlet = (pub) => { const p = (pub || '').toLowerCase(); return SG_VERN_OUTLETS.some((o) => p.includes(o)); };
+// English SG news mastheads. Their social posts must be gated like NEWS (topic +
+// Singapore signal), NOT like a curated activist account — these outlets run large
+// WORLD desks, so a topic-only gate would let their foreign court/prison posts in.
+// Handles vary per platform (FB=display name, IG/X=username), so list both forms.
+const EN_OUTLETS = [
+  'channel newsasia', 'channelnewsasia', 'cna', 'straits times', 'straitstimes', 'stcom',
+  'todayonline', 'today', 'business times', 'businesstimes', 'biztimes',
+  'mothership', 'asiaone',
+];
+// True when a source name is any SG news outlet (English or vernacular).
+const isNewsOutlet = (pub) => { const p = (pub || '').toLowerCase(); return EN_OUTLETS.some((o) => p.includes(o)) || isSgVernOutlet(pub); };
 
 function makeRelevance(cfg) {
   const lc = (a) => (a || []).filter(Boolean).map((s) => String(s).toLowerCase());
@@ -343,6 +355,7 @@ function itemToClip(it) {
     src: it.src, kw: it.kw, eng: it.eng || null, traction: it.traction || null,
     shot: it.img || null, published: it.published || null,
     extra: it.extra || '',   // OCR / subtitle text read out of the image/video
+    ...(it.newsOutlet ? { newsOutlet: true } : {}),   // news-outlet social post (gated as news)
   };
 }
 
@@ -355,7 +368,11 @@ export function mergeClips(day, results, cfg) {
   // vernacular SG outlet, …) — their results are Singapore by construction, so
   // they skip the locale co-signal (a topic match is enough).
   const trustKw = new Set((cfg.keywords || []).filter((k) => k.localTrust).map((k) => k.q));
-  const skipLocaleFor = (it) => SOCIAL_PLATS.has(it.plat) || !!it.localTrust || trustKw.has(it.kw);
+  // A social post skips the locale co-signal ONLY if it's from a curated activist/
+  // org account (locale implied). A NEWS-OUTLET social post is gated like news
+  // (its masthead runs a world desk), and a vernacular outlet uses the masthead path.
+  const skipLocaleFor = (it) => (SOCIAL_PLATS.has(it.plat) && !it.newsOutlet && !isNewsOutlet(it.pub)) || !!it.localTrust || trustKw.has(it.kw);
+  const vernFor = (it) => !!it.vern || isSgVernOutlet(it.pub) || /[㐀-鿿]/.test(it.title || '');
   const isRelevant = makeRelevance(cfg);
   day.clips = day.clips || [];
   day.dismissed = day.dismissed || [];
@@ -374,7 +391,7 @@ export function mergeClips(day, results, cfg) {
     // SPS/YRSG own posts and CARE-partner posts are intrinsically in scope (their
     // own activity); everyone else (other accounts + news) must be SPS-relevant
     // — checked against caption PLUS any OCR/subtitle text read from the media.
-    if (!ownOrCarePost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''), it.pub, skipLocaleFor(it), !!it.vern)) continue;
+    if (!ownOrCarePost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''), it.pub, skipLocaleFor(it), vernFor(it))) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
   }
@@ -391,7 +408,7 @@ export function pruneClips(day, cfg) {
   day.clips = (day.clips || []).filter((c) => {
     if (!c.src) return true;          // manually added → keep
     if (ownOrCarePost(cfg, c)) return true; // own/CARE social post → in scope
-    const skipLocale = SOCIAL_PLATS.has(c.plat) || trustKw.has(c.kw);
+    const skipLocale = (SOCIAL_PLATS.has(c.plat) && !c.newsOutlet && !isNewsOutlet(c.pub)) || trustKw.has(c.kw);
     // vernacular item: has CJK text, or came from an SG vernacular masthead
     const vern = /[㐀-鿿]/.test(c.subject || '') || isSgVernOutlet(c.pub);
     return isRelevant((c.subject || '') + ' ' + (c.extra || ''), c.pub, skipLocale, vern);
@@ -541,22 +558,20 @@ async function outletFeeds(cutoff, errors) {
   return out;
 }
 
-// Gather + dedupe all news/Reddit/YouTube/outlet items within `lookback` days.
+// Gather + dedupe news within `lookback` days. Google/Bing keyword search were
+// REMOVED (22 Jun) — the report is built from the outlets' and orgs' own feeds,
+// not topic-search aggregation. News now comes from the named SG outlets' direct
+// RSS (free, no engagement) PLUS their social accounts (swept in runSocialFetch,
+// which carry engagement/traction). Reddit + YouTube channel RSS still run here.
 async function gatherNews(cfg, lookback, errors) {
   const cutoff = new Date(Date.now() - lookback * 864e5);
   const kws = cfg.keywords || [];
   const tasks = [];
-  for (const kw of kws) {
-    tasks.push(googleNews(kw, lookback, cutoff).catch((e) => { errors.push(`Google ${kw.q}: ${String(e).slice(0, 50)}`); return []; }));
-    tasks.push(bingNews(kw, cutoff).catch((e) => { errors.push(`Bing ${kw.q}: ${String(e).slice(0, 50)}`); return []; }));
-  }
   tasks.push(redditCombined(kws, cutoff).catch((e) => { errors.push(`Reddit: ${String(e).slice(0, 50)}`); return []; }));
   tasks.push(outletFeeds(cutoff, errors).catch((e) => { errors.push(`Outlets: ${String(e).slice(0, 50)}`); return []; }));
   const ytH = (cfg.accounts && cfg.accounts.youtube) || [];
   if (ytH.length) tasks.push(youtube(ytH, cutoff, errors));
   let results = (await Promise.all(tasks)).flat();
-  // dedupe Google/Bing same-story by normalised title (prefer Google)
-  results.sort((a, b) => (a.src === 'Google News' ? 0 : 1) - (b.src === 'Google News' ? 0 : 1));
   const seenT = new Set(); const uniq = [];
   for (const it of results) { const k = it.title.toLowerCase().replace(/\W+/g, '').slice(0, 80); if (k && seenT.has(k)) continue; seenT.add(k); uniq.push(it); }
   return uniq;
@@ -770,17 +785,26 @@ export async function runSocialFetch(project, date) {
   // weekly, not daily — use a wider window than the news fetch.
   const cutoff = new Date(Date.now() - (cfg.social_lookback_days || 7) * 864e5);
   const limit = cfg.posts_per_account || 3;
+  const newsLimit = cfg.news_posts_per_account || 12;   // outlets post a lot → pull deeper
   const acc = cfg.accounts || {};
+  const news = cfg.news_accounts || {};                 // SG news outlets (separate group)
   const errors = []; let results = [];
   const rawCounts = {};   // posts each platform returned (pre-gate) — diagnostics for thin days
+  const FN = { TikTok: sweepTiktok, Instagram: sweepInstagram, Facebook: sweepFacebook, X: sweepTwitter };
+  const KEY = { TikTok: 'tiktok', Instagram: 'instagram', Facebook: 'facebook', X: 'twitter' };
   const sweeps = [];
-  if (acc.tiktok && acc.tiktok.length) sweeps.push(['TikTok', sweepTiktok, acc.tiktok]);
-  if (acc.instagram && acc.instagram.length) sweeps.push(['Instagram', sweepInstagram, acc.instagram]);
-  if (acc.facebook && acc.facebook.length) sweeps.push(['Facebook', sweepFacebook, acc.facebook]);
-  if (acc.twitter && acc.twitter.length) sweeps.push(['X', sweepTwitter, acc.twitter]);
-  for (const [name, fn, handles] of sweeps) {
-    try { const r = await fn(handles, cutoff, limit); rawCounts[name] = r.length; results = results.concat(r); }
-    catch (e) { rawCounts[name] = 'ERR'; errors.push(`${name}: ${String(e).slice(0, 90)}`); }
+  // Two groups: curated accounts (activists/orgs/own/CARE) at the normal limit,
+  // and news outlets at a deeper limit so their court/SPS stories surface.
+  for (const name of ['TikTok', 'Instagram', 'Facebook', 'X']) {
+    const a = acc[KEY[name]]; if (a && a.length) sweeps.push([name, FN[name], a, limit, false]);
+    const n = news[KEY[name]]; if (n && n.length) sweeps.push([name, FN[name], n, newsLimit, true]);
+  }
+  for (const [name, fn, handles, lim, isNews] of sweeps) {
+    try {
+      const r = await fn(handles, cutoff, lim);
+      if (isNews) r.forEach((it) => { it.newsOutlet = true; });   // gate as news, not curated-social
+      rawCounts[name] = (rawCounts[name] || 0) + r.length; results = results.concat(r);
+    } catch (e) { rawCounts[name] = rawCounts[name] || 'ERR'; errors.push(`${name}: ${String(e).slice(0, 90)}`); }
   }
   // Read text OUT of each post's image (vision OCR) and merge it into `extra`
   // alongside any TikTok subtitles, so on-image/spoken content feeds the relevance
@@ -833,10 +857,18 @@ const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-lat
 export async function summarizeItems(items) {
   const key = Netlify.env.get('GEMINI_API_KEY');
   if (!key) throw new Error('GEMINI_API_KEY not set');
-  const prompt = `You are a media-monitoring analyst preparing the Singapore Prison Service (SPS) daily media monitoring report.
+  const prompt = `You are a media-monitoring analyst preparing the Singapore Prison Service (SPS) daily media monitoring report. Write each entry to the house style below. If an item is in Chinese or Malay, translate it; the output must be in English.
+
+STYLE RULES (follow exactly):
+- Past tense throughout ("published", "shared", "highlighted", "advertised", "said").
+- Neutral and factual. NEVER use promotional or interpretive words like heartwarming, powerful, successful, engaging, viral, funny, inspiring, compelling. Use plain verbs: published, shared, used, highlighted, featured, encouraged, advertised, explained, reflected on.
+- Purpose-led: explain not just what was posted but what it was trying to do.
+- Low interpretation: do not analyse audience sentiment or add opinion. No creative flourish.
+- Strip emoji, hashtags, internet slang and quotation marks from the headline.
+
 For each item below (a social media post or news article, sometimes several related clips of the same story), produce:
-- "headline": one concise line in sentence case. No emoji, hashtags, slang or quotation marks.
-- "summary": a neutral, third-person summary of 1 to 3 sentences in the style of an official media monitoring report. Begin by naming the publisher/account and what they did, e.g. "Prison Fellowship Singapore published a Facebook post inviting followers to its Prison Ministry Conference...". Summarise the substance and key facts (who/what/when). Do NOT copy the caption verbatim; strip emoji, hashtags and internet slang; do not editorialise or add opinion.
+- "headline": one line, sentence case, in the form "[Organisation/person] [published/shared/used/highlighted/etc.] [content type / topic / angle]". It must answer: who did what, and what was the main angle. Examples: "Singapore Prison Service published a Father's Day video featuring a prison officer"; "Alliance Against Death Penalty published a post promoting its upcoming workshop on drug policy and harm reduction".
+- "summary": 2 to 4 sentences following this structure. Sentence 1 — what the post/article was about (open with "In the post...", "SPS shared...", "The article highlighted...", "The post advertised..." as appropriate). Sentence 2 — what it aimed to communicate ("It highlighted...", "The initiative aimed to...", "The post encouraged...", "The video used..."). Sentence 3 (only if it adds value) — one key supporting detail: a named person, a quote, a programme detail, a date, or an outcome. Do NOT copy the caption verbatim. Do NOT mention engagement, likes or comments (a separate traction line handles that).
 - "category": classify into EXACTLY ONE of these values:
    "issues" = executions, the death penalty, death row, court cases or controversies that directly affect or criticise SPS, custody/treatment complaints, anti-death-penalty activism.
    "daily_news" = general news about SPS, Changi Prison, the Ministry of Home Affairs prison matters, sentencing/court news involving imprisonment, operational prison news.
