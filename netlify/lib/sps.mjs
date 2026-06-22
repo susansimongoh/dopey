@@ -356,6 +356,7 @@ function itemToClip(it) {
     shot: it.img || null, published: it.published || null,
     extra: it.extra || '',   // OCR / subtitle text read out of the image/video
     ...(it.newsOutlet ? { newsOutlet: true } : {}),   // news-outlet social post (gated as news)
+    ...(it.discovered ? { discovered: true } : {}),  // found via keyword search, not account sweep
   };
 }
 
@@ -778,6 +779,95 @@ async function sweepTwitter(handles, cutoff, limit) {
   return out;
 }
 
+// ── Keyword-first social search (discovery layer) ─────────────────────────
+// These mirror the account sweep functions but take search queries instead of
+// handle lists, so any public account whose content matches surfaces — not just
+// the pre-configured watchlist. Results carry discovered:true and go through
+// the full gate (topic + locale checks); no own/CARE exemption applies.
+
+async function searchTiktok(queries, cutoff, limit) {
+  const items = await apifyRun('clockworks~tiktok-scraper', {
+    searchQueries: queries, resultsPerPage: limit, searchSection: 'top',
+    shouldDownloadVideos: false, shouldDownloadCovers: false,
+    shouldDownloadSubtitles: true, shouldDownloadSlideshowImages: false,
+  });
+  const out = [];
+  for (const v of items) {
+    const dt = when(v.createTimeISO || v.createTime); const link = v.webVideoUrl;
+    if (!dt || !link || dt < cutoff) continue;
+    const h = (v.authorMeta && v.authorMeta.name) || 'unknown';
+    const subs = await tiktokSubs(v);
+    const it = await socialItem('TikTok', h, v.text, link, dt,
+      { plays: v.playCount||0, likes: v.diggCount||0, comments: v.commentCount||0, shares: v.shareCount||0 },
+      (v.videoMeta && v.videoMeta.coverUrl) || v.coverUrl, subs);
+    it.discovered = true; out.push(it);
+  }
+  return out;
+}
+
+async function searchInstagram(queries, cutoff, limit) {
+  // Instagram discovery is hashtag-based: convert search queries to hashtags.
+  // Best recall for terms like "yellowribbonsingapore", "changiprison" etc.
+  const hashtags = queries.map((q) => q.replace(/\s+/g, '').toLowerCase());
+  const items = await apifyRun('apify~instagram-scraper', {
+    hashtags, resultsType: 'posts', resultsLimit: limit,
+  });
+  const out = [];
+  for (const p of items) {
+    const dt = when(p.timestamp); const link = p.url;
+    if (!dt || !link || dt < cutoff) continue;
+    const it = await socialItem('Instagram', p.ownerUsername || 'unknown', p.caption, link, dt,
+      { plays: p.videoPlayCount||0, likes: p.likesCount||0, comments: p.commentsCount||0, shares: 0 },
+      p.displayUrl);
+    it.discovered = true; out.push(it);
+  }
+  return out;
+}
+
+async function searchFacebook(queries, cutoff, limit) {
+  // Facebook public search via search page URLs — same actor, different startUrls.
+  const items = await apifyRun('apify~facebook-posts-scraper', {
+    startUrls: queries.map((q) => ({ url: `https://www.facebook.com/search/posts?q=${encodeURIComponent(q)}` })),
+    resultsLimit: limit,
+  });
+  const out = [];
+  for (const p of items) {
+    const dt = when(p.time || p.timestamp); const link = p.url || p.topLevelUrl;
+    if (!dt || !link || dt < cutoff) continue;
+    const h = (p.user && p.user.name) || p.pageName || 'unknown';
+    let img = null;
+    if (Array.isArray(p.media) && p.media[0]) img = (p.media[0].photo_image && p.media[0].photo_image.uri) || p.media[0].thumbnail || null;
+    const it = await socialItem('Facebook', h, p.text, link, dt,
+      { plays: 0, likes: p.likes||0, comments: p.comments||0, shares: p.shares||0 }, img);
+    it.discovered = true; out.push(it);
+  }
+  return out;
+}
+
+async function searchTwitter(queries, cutoff, limit) {
+  // Same actor as sweepTwitter but without the `from:handle` constraint —
+  // searches all of X for the query terms, surfacing any matching public account.
+  const since = cutoff.toISOString().slice(0, 10);
+  const items = await apifyRun('apidojo~tweet-scraper', {
+    searchTerms: queries.map((q) => `${q} since:${since}`),
+    maxItems: limit * queries.length,
+    sort: 'Latest', includeSearchTerms: false, onlyVerifiedUsers: false,
+  });
+  const out = [];
+  for (const t of items) {
+    const dt = when(t.createdAt || t.created_at); const link = t.url || t.twitterUrl;
+    if (!dt || !link || dt < cutoff) continue;
+    const h = (t.author && (t.author.userName || t.author.screen_name)) || t.username || 'unknown';
+    let img = null;
+    const media = (t.extendedEntities && t.extendedEntities.media) || t.media || [];
+    if (Array.isArray(media) && media[0]) img = media[0].media_url_https || media[0].media_url || (typeof media[0] === 'string' ? media[0] : null);
+    const it = await socialItem('X', h, t.fullText || t.text, link, dt,
+      { plays: t.viewCount||0, likes: t.likeCount||0, comments: t.replyCount||0, shares: (t.retweetCount||0)+(t.quoteCount||0) }, img);
+    it.discovered = true; out.push(it);
+  }
+  return out;
+}
+
 export async function runSocialFetch(project, date) {
   if (!APIFY_TOKEN()) throw new Error('APIFY_TOKEN not set');
   const cfg = await getWatchlist(project);
@@ -806,6 +896,23 @@ export async function runSocialFetch(project, date) {
       rawCounts[name] = (rawCounts[name] || 0) + r.length; results = results.concat(r);
     } catch (e) { rawCounts[name] = rawCounts[name] || 'ERR'; errors.push(`${name}: ${String(e).slice(0, 90)}`); }
   }
+  // Keyword-first discovery: search each platform for our watchlist keywords so
+  // content from accounts NOT in the configured lists can surface. Search queries
+  // are cfg.keywords (SG-scoped), excluding Malay lang:ms entries. Limit is
+  // cfg.search_per_query (default 10). Results marked discovered:true; they go
+  // through the full gate like any social post (no own/CARE exemption).
+  const searchFN = { TikTok: searchTiktok, Instagram: searchInstagram, Facebook: searchFacebook, X: searchTwitter };
+  const searchLimit = cfg.search_per_query || 10;
+  const searchQueries = (cfg.keywords || []).filter((k) => !k.lang).map((k) => k.q);
+  const searchRaw = {};
+  if (searchQueries.length) {
+    for (const name of ['TikTok', 'Instagram', 'Facebook', 'X']) {
+      try {
+        const r = await searchFN[name](searchQueries, cutoff, searchLimit);
+        searchRaw[name] = r.length; results = results.concat(r);
+      } catch (e) { searchRaw[name] = 'ERR'; errors.push(`${name} search: ${String(e).slice(0, 90)}`); }
+    }
+  }
   // Read text OUT of each post's image (vision OCR) and merge it into `extra`
   // alongside any TikTok subtitles, so on-image/spoken content feeds the relevance
   // gate + summary. Best-effort + sequential to be gentle on the Gemini quota.
@@ -827,7 +934,7 @@ export async function runSocialFetch(project, date) {
   for (const d of touched) {
     let day = (await getDay(project, d)) || freshDay(d);
     if (byDate[d] && byDate[d].length) { mergeClips(day, byDate[d], cfg); day = await rebuildStories(day, cfg); }
-    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; }
+    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; day.social_search_raw = searchRaw; }
     await putDay(project, day);
   }
   return (await getDay(project, date)) || freshDay(date);
