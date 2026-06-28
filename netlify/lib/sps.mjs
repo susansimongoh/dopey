@@ -331,7 +331,12 @@ function makeRelevance(cfg) {
   return (text, pub, skipLocale, vern) => {
     if (anchors.length && relevant(text, anchors)) return true;
     if (!relevant(text, topics)) return false;
-    if (vern) return isSgVernOutlet(pub);  // vernacular → must be an SG masthead
+    // Vernacular: must be an SG masthead AND contain a Singapore locale word.
+    // SG mastheads also cover international news in Malay/Chinese (e.g. Berita
+    // Harian reporting Korean/Saudi/Myanmar stories), so masthead trust alone leaks
+    // foreign content. Requiring a locale co-signal drops those while keeping SG
+    // stories (which almost always contain "Singapura", "Changi", "SPS", etc.).
+    if (vern) return isSgVernOutlet(pub) && (!locale.length || relevant(text, locale));
     if (!locale.length) return true;       // project not localised → legacy behaviour
     if (skipLocale) return true;           // already SG-scoped → topic suffices
     return relevant(text, locale);         // else news → needs a Singapore locale word
@@ -901,17 +906,18 @@ export async function runSocialFetch(project, date) {
   // are cfg.keywords (SG-scoped), excluding Malay lang:ms entries. Limit is
   // cfg.search_per_query (default 10). Results marked discovered:true; they go
   // through the full gate like any social post (no own/CARE exemption).
-  const searchFN = { TikTok: searchTiktok, Instagram: searchInstagram, Facebook: searchFacebook, X: searchTwitter };
+  // Keyword-first discovery: X only. TikTok search returns HTTP 400 (actor input
+  // schema changed), Instagram hashtag search returns 0 (multi-word queries don't
+  // map to real hashtags), Facebook search-page scraping is login-gated (0 results).
+  // X search (apidojo~tweet-scraper) is the only working discovery channel.
   const searchLimit = cfg.search_per_query || 10;
   const searchQueries = (cfg.keywords || []).filter((k) => !k.lang).map((k) => k.q);
   const searchRaw = {};
   if (searchQueries.length) {
-    for (const name of ['TikTok', 'Instagram', 'Facebook', 'X']) {
-      try {
-        const r = await searchFN[name](searchQueries, cutoff, searchLimit);
-        searchRaw[name] = r.length; results = results.concat(r);
-      } catch (e) { searchRaw[name] = 'ERR'; errors.push(`${name} search: ${String(e).slice(0, 90)}`); }
-    }
+    try {
+      const r = await searchTwitter(searchQueries, cutoff, searchLimit);
+      searchRaw['X'] = r.length; results = results.concat(r);
+    } catch (e) { searchRaw['X'] = 'ERR'; errors.push(`X search: ${String(e).slice(0, 90)}`); }
   }
   // Read text OUT of each post's image (vision OCR) and merge it into `extra`
   // alongside any TikTok subtitles, so on-image/spoken content feeds the relevance
