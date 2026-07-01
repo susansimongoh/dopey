@@ -751,7 +751,11 @@ async function sweepInstagram(handles, cutoff, limit) {
   return out;
 }
 async function sweepFacebook(handles, cutoff, limit) {
-  const items = await apifyRun('apify~facebook-posts-scraper', { startUrls: handles.map((h) => ({ url: `https://www.facebook.com/${h}` })), resultsLimit: limit });
+  // captionText: true → include video transcripts (spoken words) for FB video posts.
+  // The FB scraper has NO transcript add-on (unlike TikTok/IG reels), so this is
+  // free beyond the flat per-post + start fee. Output field name varies by actor
+  // version — read it defensively and fold it into `extra` like TikTok subtitles.
+  const items = await apifyRun('apify~facebook-posts-scraper', { startUrls: handles.map((h) => ({ url: `https://www.facebook.com/${h}` })), resultsLimit: limit, captionText: true });
   const out = [];
   for (const p of items) {
     const dt = when(p.time || p.timestamp); const link = p.url || p.topLevelUrl;
@@ -759,8 +763,10 @@ async function sweepFacebook(handles, cutoff, limit) {
     const h = (p.user && p.user.name) || p.pageName || 'unknown';
     let img = null;
     if (Array.isArray(p.media) && p.media[0]) img = (p.media[0].photo_image && p.media[0].photo_image.uri) || p.media[0].thumbnail || null;
+    const tx = p.captionText || p.transcript || p.videoTranscript || p.video_transcript || '';
     out.push(await socialItem('Facebook', h, p.text, link, dt,
-      { plays: 0, likes: p.likes || 0, comments: p.comments || 0, shares: p.shares || 0 }, img));
+      { plays: 0, likes: p.likes || 0, comments: p.comments || 0, shares: p.shares || 0 }, img,
+      typeof tx === 'string' ? tx : ''));
   }
   return out;
 }
