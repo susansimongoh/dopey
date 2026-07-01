@@ -762,6 +762,29 @@ async function sweepInstagram(handles, cutoff, limit) {
   }
   return out;
 }
+// Shortcode from any IG post/reel URL — the stable key shared by both scrapers.
+const igShortcode = (url) => (String(url || '').match(/\/(?:reels?|p|tv)\/([^/?#]+)/) || [])[1] || null;
+// Instagram reel transcripts (spoken audio) via the dedicated reel scraper's paid
+// includeTranscript add-on (~$0.041/started-min/reel). The standard IG scraper can't
+// transcribe. Returns a shortcode→transcript map used to ENRICH the main IG sweep's
+// posts in place (no separate clips → no duplicates). onlyPostsNewerThan bounds the
+// window so we don't pay to transcribe old reels.
+async function igReelTranscripts(handles, cutoff, limit) {
+  const since = cutoff.toISOString().slice(0, 10);
+  const items = await apifyRun('apify~instagram-reel-scraper', {
+    username: handles, resultsLimit: limit, onlyPostsNewerThan: since,
+    includeTranscript: true, skipPinnedPosts: true,
+  });
+  const map = new Map();
+  for (const r of items) {
+    const code = r.shortCode || r.code || igShortcode(r.url) || igShortcode(r.inputUrl);
+    const dt = when(r.timestamp);
+    if (!code || (dt && dt < cutoff)) continue;
+    const tx = r.transcript || r.videoTranscript || r.transcriptText || r.captions || '';
+    if (tx && typeof tx === 'string') map.set(code, tx.trim());
+  }
+  return map;
+}
 async function sweepFacebook(handles, cutoff, limit) {
   // captionText: true → include video transcripts (spoken words) for FB video posts.
   // The FB scraper has NO transcript add-on (unlike TikTok/IG reels), so this is
@@ -934,6 +957,26 @@ export async function runSocialFetch(project, date) {
     if (r) { rawCounts[name] = (rawCounts[name] || 0) + r.length; results = results.concat(r); }
     else rawCounts[name] = rawCounts[name] || 'ERR';
   }
+  // Instagram spoken-audio transcripts (paid reel add-on, ~$0.041/started-min/reel).
+  // The standard IG scraper can't transcribe, so we run the dedicated reel scraper on
+  // the same handles and fold each reel's transcript into the matching post's `extra`
+  // (matched by shortcode) — gives IG the same spoken-content coverage as TikTok subs
+  // and FB transcripts. Bounded by cutoff; disable with cfg.ig_transcripts === false.
+  let igReelCount = 0;
+  if (cfg.ig_transcripts !== false) {
+    const igHandles = [...(acc.instagram || []), ...(news.instagram || [])];
+    if (igHandles.length) {
+      try {
+        const txMap = await igReelTranscripts(igHandles, cutoff, cfg.ig_reel_limit || newsLimit);
+        igReelCount = txMap.size;
+        for (const it of results) {
+          if (it.plat !== 'Instagram') continue;
+          const tx = txMap.get(igShortcode(it.link));
+          if (tx) it.extra = ((it.extra || '') + ' ' + tx).trim().slice(0, 1000);
+        }
+      } catch (e) { errors.push('IG transcripts: ' + String(e).slice(0, 80)); }
+    }
+  }
   // Keyword-first discovery is DISABLED on all four platforms. TikTok search 400s
   // (actor schema changed), Instagram hashtag search returns 0 (multi-word queries
   // don't map to real hashtags), Facebook search-page scraping is login-gated, and
@@ -995,7 +1038,7 @@ export async function runSocialFetch(project, date) {
   for (const d of touched) {
     let day = (await getDay(project, d)) || freshDay(d);
     if (byDate[d] && byDate[d].length) { mergeClips(day, byDate[d], cfg); day = await rebuildStories(day, cfg); }
-    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; day.social_search_raw = searchRaw; day.ocr_stats = ocrStats; }
+    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; day.social_search_raw = searchRaw; day.ocr_stats = ocrStats; day.ig_reels = igReelCount; }
     await putDay(project, day);
   }
   return (await getDay(project, date)) || freshDay(date);
