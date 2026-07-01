@@ -910,24 +910,15 @@ export async function runSocialFetch(project, date) {
     if (r) { rawCounts[name] = (rawCounts[name] || 0) + r.length; results = results.concat(r); }
     else rawCounts[name] = rawCounts[name] || 'ERR';
   }
-  // Keyword-first discovery: search each platform for our watchlist keywords so
-  // content from accounts NOT in the configured lists can surface. Search queries
-  // are cfg.keywords (SG-scoped), excluding Malay lang:ms entries. Limit is
-  // cfg.search_per_query (default 10). Results marked discovered:true; they go
-  // through the full gate like any social post (no own/CARE exemption).
-  // Keyword-first discovery: X only. TikTok search returns HTTP 400 (actor input
-  // schema changed), Instagram hashtag search returns 0 (multi-word queries don't
-  // map to real hashtags), Facebook search-page scraping is login-gated (0 results).
-  // X search (apidojo~tweet-scraper) is the only working discovery channel.
-  const searchLimit = cfg.search_per_query || 10;
-  const searchQueries = (cfg.keywords || []).filter((k) => !k.lang).map((k) => k.q);
+  // Keyword-first discovery is DISABLED on all four platforms. TikTok search 400s
+  // (actor schema changed), Instagram hashtag search returns 0 (multi-word queries
+  // don't map to real hashtags), Facebook search-page scraping is login-gated, and
+  // X search — the last one standing — surfaced ~11 false positives/day: random
+  // tweets self-passing on a bare anchor mention ("drove past Changi prison once",
+  // Indonesian "selarang" slang, death-penalty chatter). Curated-account + news-
+  // outlet sweeps above cover the watchlist cleanly; off-watchlist discovery isn't
+  // worth the noise. Re-enable per-platform only once its precision is fixed.
   const searchRaw = {};
-  if (searchQueries.length) {
-    try {
-      const r = await searchTwitter(searchQueries, cutoff, searchLimit);
-      searchRaw['X'] = r.length; results = results.concat(r);
-    } catch (e) { searchRaw['X'] = 'ERR'; errors.push(`X search: ${String(e).slice(0, 90)}`); }
-  }
   // Read text OUT of each post's image (vision OCR) and merge it into `extra`
   // alongside any TikTok subtitles, so on-image/spoken content feeds the relevance
   // gate + summary. Best-effort, in small concurrent batches: fully sequential over
