@@ -681,12 +681,12 @@ async function fetchImage(imgUrl) {
 }
 
 // Read text OUT of a post's image via Gemini vision (posters/graphics/title cards).
-async function imageText(imgUrl) {
+async function imageText(imgUrl, diag) {
   const key = Netlify.env.get('GEMINI_API_KEY');
   if (!key || !imgUrl) return '';
   try {
     const got = await fetchImage(imgUrl);
-    if (!got) return null;   // null = image fetch failed (vs '' = fetched, no text) — for OCR diagnostics
+    if (!got) { if (diag) diag.o = 'fetch_fail'; return null; }
     const { ct, data } = got;
     const body = { contents: [{ parts: [
       { inlineData: { mimeType: ct, data } },
@@ -699,12 +699,18 @@ async function imageText(imgUrl) {
       for (let attempt = 0; attempt < 2; attempt++) {
         const rr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
           { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
-        if (rr.ok) { const d = await rr.json(); return ((d?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '').trim().slice(0, 600); }
+        if (rr.ok) {
+          const d = await rr.json(); const cand = d?.candidates?.[0];
+          const txt = ((cand?.content?.parts || []).map((p) => p.text || '').join('') || '').trim();
+          if (diag) diag.o = txt ? 'text' : ('empty:' + (cand?.finishReason || '?'));
+          return txt.slice(0, 600);
+        }
+        if (diag) diag.o = 'http_' + rr.status;
         if (![429, 503].includes(rr.status)) { attempt = 2; break; }   // hard error → next model
         if (attempt === 0) await new Promise((r) => setTimeout(r, 2500));  // rate-limited → back off once
       }
     }
-  } catch { /* best-effort */ }
+  } catch (e) { if (diag) diag.o = 'exc:' + String(e).slice(0, 40); /* best-effort */ }
   return '';
 }
 
@@ -964,16 +970,15 @@ export async function runSocialFetch(project, date) {
   const candidates = results.filter(needsOcr)
     .sort((a, b) => (b.newsOutlet ? 1 : 0) - (a.newsOutlet ? 1 : 0))
     .slice(0, OCR_CAP);
-  const ocrStats = { cap: OCR_CAP, candidates: results.filter(needsOcr).length };   // + per-platform below
-  const bump = (p, k) => { (ocrStats[p] = ocrStats[p] || { attempted: 0, fetchFail: 0, gotText: 0 })[k]++; };
+  const ocrStats = { cap: OCR_CAP, candidates: results.filter(needsOcr).length, outcomes: {} };
+  const bumpOut = (o) => { ocrStats.outcomes[o] = (ocrStats.outcomes[o] || 0) + 1; };
   for (let i = 0; i < candidates.length; i += OCR_BATCH) {
     await Promise.all(candidates.slice(i, i + OCR_BATCH).map(async (it) => {
       try {
-        const p = it.plat || '?';
-        bump(p, 'attempted');
-        const ocr = await imageText(it.img);
-        if (ocr === null) bump(p, 'fetchFail');
-        else if (ocr) { bump(p, 'gotText'); it.extra = ((it.extra || '') + ' ' + ocr).trim().slice(0, 1000); }
+        const diag = {};
+        const ocr = await imageText(it.img, diag);
+        bumpOut(diag.o || 'unknown');
+        if (ocr && ocr !== null) it.extra = ((it.extra || '') + ' ' + ocr).trim().slice(0, 1000);
       } catch { /* best-effort */ }
     }));
     if (i + OCR_BATCH < candidates.length) await new Promise((r) => setTimeout(r, 1500));  // throttle: stay under Gemini RPM
