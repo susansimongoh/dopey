@@ -894,12 +894,21 @@ export async function runSocialFetch(project, date) {
     const a = acc[KEY[name]]; if (a && a.length) sweeps.push([name, FN[name], a, limit, false]);
     const n = news[KEY[name]]; if (n && n.length) sweeps.push([name, FN[name], n, newsLimit, true]);
   }
-  for (const [name, fn, handles, lim, isNews] of sweeps) {
+  // Run all platform sweeps CONCURRENTLY. Sequentially, each apifyRun can wait up
+  // to 10 min (maxWait), so a couple of slow actors blow past Netlify's 15-min
+  // background cap and the function is killed before it writes anything. Concurrent
+  // wall-time = the slowest single actor, not the sum. Each keeps its own try/catch
+  // so one failed/slow actor can't sink the batch.
+  const swept = await Promise.all(sweeps.map(async ([name, fn, handles, lim, isNews]) => {
     try {
       const r = await fn(handles, cutoff, lim);
       if (isNews) r.forEach((it) => { it.newsOutlet = true; });   // gate as news, not curated-social
-      rawCounts[name] = (rawCounts[name] || 0) + r.length; results = results.concat(r);
-    } catch (e) { rawCounts[name] = rawCounts[name] || 'ERR'; errors.push(`${name}: ${String(e).slice(0, 90)}`); }
+      return { name, r };
+    } catch (e) { errors.push(`${name}: ${String(e).slice(0, 90)}`); return { name, r: null }; }
+  }));
+  for (const { name, r } of swept) {
+    if (r) { rawCounts[name] = (rawCounts[name] || 0) + r.length; results = results.concat(r); }
+    else rawCounts[name] = rawCounts[name] || 'ERR';
   }
   // Keyword-first discovery: search each platform for our watchlist keywords so
   // content from accounts NOT in the configured lists can surface. Search queries
@@ -921,12 +930,17 @@ export async function runSocialFetch(project, date) {
   }
   // Read text OUT of each post's image (vision OCR) and merge it into `extra`
   // alongside any TikTok subtitles, so on-image/spoken content feeds the relevance
-  // gate + summary. Best-effort + sequential to be gentle on the Gemini quota.
-  for (const it of results) {
-    try {
-      const ocr = it.img ? await imageText(it.img) : '';
-      if (ocr) it.extra = ((it.extra || '') + ' ' + ocr).trim().slice(0, 1000);
-    } catch { /* best-effort */ }
+  // gate + summary. Best-effort, in small concurrent batches: fully sequential over
+  // ~200 images at ~2s each alone approaches the 15-min background cap; batching
+  // keeps it well under while staying gentle on the Gemini quota.
+  const OCR_BATCH = 6;
+  for (let i = 0; i < results.length; i += OCR_BATCH) {
+    await Promise.all(results.slice(i, i + OCR_BATCH).map(async (it) => {
+      try {
+        const ocr = it.img ? await imageText(it.img) : '';
+        if (ocr) it.extra = ((it.extra || '') + ' ' + ocr).trim().slice(0, 1000);
+      } catch { /* best-effort */ }
+    }));
   }
   // Bucket each post into the day it was PUBLISHED (not the sweep day), so a sweep
   // distributes its window across the right days and never piles last week's posts
