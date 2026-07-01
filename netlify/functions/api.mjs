@@ -149,9 +149,9 @@ export default async (req) => {
       return json({ ok: true, date, pruned, clips: (updated.clips || []).length, stories: stories.length, fallbacks: stories.filter((s) => s.llm === false).length });
     }
     if (req.method === 'POST' && path === '/api/summarize') {
-      const { items } = await req.json();
+      const { items, project } = await req.json();
       if (!items || !items.length) return json({ ok: true, results: [] });
-      try { return json({ ok: true, results: await summarizeItems(items) }); }
+      try { return json({ ok: true, results: await summarizeItems(items, project || proj) }); }
       catch (e) { return json({ ok: false, error: String(e).slice(0, 200) }); }
     }
     if (req.method === 'POST' && path === '/api/snap') {

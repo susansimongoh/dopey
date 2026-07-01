@@ -3,7 +3,17 @@
 
 const SUPA_URL = () => Netlify.env.get('SUPABASE_URL');
 const SUPA_KEY = () => Netlify.env.get('SUPABASE_ANON_KEY');
-const APIFY_TOKEN = () => Netlify.env.get('APIFY_TOKEN');
+// Per-project API keys: each listening project (sps, toteboard, …) can have its own
+// Gemini/Apify credentials for separate billing, quota and blast radius, all on one
+// deployment. Look up <BASE>_<PROJECT> first (e.g. GEMINI_API_KEY_TOTEBOARD), fall
+// back to the shared <BASE> so existing single-key setups (SPS) keep working.
+const envSuffix = (project) => String(project || '').toUpperCase().replace(/[^A-Z0-9]/g, '_');
+const projEnv = (base, project) => {
+  const s = envSuffix(project);
+  return (s && Netlify.env.get(`${base}_${s}`)) || Netlify.env.get(base);
+};
+const APIFY_TOKEN = (project) => projEnv('APIFY_TOKEN', project);
+const GEMINI_KEY = (project) => projEnv('GEMINI_API_KEY', project);
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
@@ -76,11 +86,14 @@ export async function putProjects(list) {
 }
 
 export async function getWatchlist(project) {
-  const rows = await supa(`monitor_config?key=eq.watchlist:${PROJ(project)}&select=value`);
-  if (rows && rows[0] && rows[0].value) return rows[0].value;
+  const p = PROJ(project);
+  const rows = await supa(`monitor_config?key=eq.watchlist:${p}&select=value`);
+  // Stamp the project onto cfg so any function holding cfg can resolve per-project
+  // keys / prompts without threading `project` through every call site.
+  if (rows && rows[0] && rows[0].value) return { ...rows[0].value, project: p };
   // legacy fallback: the original single-project key
   const old = await supa(`monitor_config?key=eq.watchlist&select=value`);
-  return (old && old[0] && old[0].value) || { lookback_days: 2, posts_per_account: 3, keywords: [], accounts: {} };
+  return { ...((old && old[0] && old[0].value) || { lookback_days: 2, posts_per_account: 3, keywords: [], accounts: {} }), project: p };
 }
 
 export async function putWatchlist(project, cfg) {
@@ -188,7 +201,7 @@ export async function rebuildStories(day, cfg) {
   if (fresh.length) {
     try {
       const items = fresh.map((g, i) => ({ key: String(i), pub: _uniq(g.map((c) => c.pub)).join(', '), platforms: _uniq(g.map((c) => c.plat).filter(Boolean)).join(', '), texts: g.map((c) => (c.subject || '') + (c.extra ? ` [text read from image/video: ${c.extra}]` : '')).filter(Boolean) }));
-      (await summarizeItems(items) || []).forEach((r, i) => { byIdx[i] = r; });
+      (await summarizeItems(items, cfg && cfg.project) || []).forEach((r, i) => { byIdx[i] = r; });
     } catch (e) { /* caption fallback below */ }
   }
 
@@ -628,8 +641,8 @@ export async function runBackfill(project, fromDate) {
 
 // ── Apify social sweep ───────────────────────────────────────────────────
 const APIFY = 'https://api.apify.com/v2';
-async function apifyRun(actor, input, maxWait = 600000) {
-  const token = APIFY_TOKEN();
+async function apifyRun(actor, input, maxWait = 600000, project) {
+  const token = APIFY_TOKEN(project);
   const start = await httpPostJson(`${APIFY}/acts/${actor}/runs?token=${token}`, input);
   const runId = start.data.id, dsId = start.data.defaultDatasetId;
   const t0 = Date.now();
@@ -681,8 +694,8 @@ async function fetchImage(imgUrl) {
 }
 
 // Read text OUT of a post's image via Gemini vision (posters/graphics/title cards).
-async function imageText(imgUrl, diag) {
-  const key = Netlify.env.get('GEMINI_API_KEY');
+async function imageText(imgUrl, diag, project) {
+  const key = GEMINI_KEY(project);
   if (!key || !imgUrl) return '';
   try {
     const got = await fetchImage(imgUrl);
@@ -731,14 +744,14 @@ async function tiktokSubs(v) {
 }
 const when = (v) => { if (!v) return null; try { const d = typeof v === 'number' ? new Date(v * 1000) : new Date(v); return isNaN(d.getTime()) ? null : d; } catch { return null; } };
 
-async function sweepTiktok(handles, cutoff, limit) {
+async function sweepTiktok(handles, cutoff, limit, project) {
   // downloadSubtitlesOptions: DOWNLOAD_SUBTITLES pulls TikTok's OWN existing
   // captions (populates subtitleLinks) — NOT charged. The AI-transcription modes
   // (DOWNLOAD_AND_TRANSCRIBE_*/TRANSCRIBE_ALL_VIDEOS) bill the Transcript add-on at
   // ~$0.041/min/video and are NOT used. This replaces the deprecated boolean
   // `shouldDownloadSubtitles: true`, which the actor still honours today but could
   // drop anytime — silently defaulting to NEVER_DOWNLOAD_SUBTITLES and killing subs.
-  const items = await apifyRun('clockworks~tiktok-scraper', { profiles: handles, resultsPerPage: limit, profileScrapeSections: ['videos'], profileSorting: 'latest', excludePinnedPosts: true, shouldDownloadVideos: false, shouldDownloadCovers: false, downloadSubtitlesOptions: 'DOWNLOAD_SUBTITLES', shouldDownloadSlideshowImages: false });
+  const items = await apifyRun('clockworks~tiktok-scraper', { profiles: handles, resultsPerPage: limit, profileScrapeSections: ['videos'], profileSorting: 'latest', excludePinnedPosts: true, shouldDownloadVideos: false, shouldDownloadCovers: false, downloadSubtitlesOptions: 'DOWNLOAD_SUBTITLES', shouldDownloadSlideshowImages: false }, undefined, project);
   const out = [];
   for (const v of items) {
     const dt = when(v.createTimeISO || v.createTime); const link = v.webVideoUrl;
@@ -751,8 +764,8 @@ async function sweepTiktok(handles, cutoff, limit) {
   }
   return out;
 }
-async function sweepInstagram(handles, cutoff, limit) {
-  const items = await apifyRun('apify~instagram-scraper', { directUrls: handles.map((h) => `https://www.instagram.com/${h}/`), resultsType: 'posts', resultsLimit: limit });
+async function sweepInstagram(handles, cutoff, limit, project) {
+  const items = await apifyRun('apify~instagram-scraper', { directUrls: handles.map((h) => `https://www.instagram.com/${h}/`), resultsType: 'posts', resultsLimit: limit }, undefined, project);
   const out = [];
   for (const p of items) {
     const dt = when(p.timestamp); const link = p.url;
@@ -769,12 +782,12 @@ const igShortcode = (url) => (String(url || '').match(/\/(?:reels?|p|tv)\/([^/?#
 // transcribe. Returns a shortcode→transcript map used to ENRICH the main IG sweep's
 // posts in place (no separate clips → no duplicates). onlyPostsNewerThan bounds the
 // window so we don't pay to transcribe old reels.
-async function igReelTranscripts(handles, cutoff, limit) {
+async function igReelTranscripts(handles, cutoff, limit, project) {
   const since = cutoff.toISOString().slice(0, 10);
   const items = await apifyRun('apify~instagram-reel-scraper', {
     username: handles, resultsLimit: limit, onlyPostsNewerThan: since,
     includeTranscript: true, skipPinnedPosts: true,
-  });
+  }, undefined, project);
   const map = new Map();
   for (const r of items) {
     const code = r.shortCode || r.code || igShortcode(r.url) || igShortcode(r.inputUrl);
@@ -785,12 +798,12 @@ async function igReelTranscripts(handles, cutoff, limit) {
   }
   return map;
 }
-async function sweepFacebook(handles, cutoff, limit) {
+async function sweepFacebook(handles, cutoff, limit, project) {
   // captionText: true → include video transcripts (spoken words) for FB video posts.
   // The FB scraper has NO transcript add-on (unlike TikTok/IG reels), so this is
   // free beyond the flat per-post + start fee. Output field name varies by actor
   // version — read it defensively and fold it into `extra` like TikTok subtitles.
-  const items = await apifyRun('apify~facebook-posts-scraper', { startUrls: handles.map((h) => ({ url: `https://www.facebook.com/${h}` })), resultsLimit: limit, captionText: true });
+  const items = await apifyRun('apify~facebook-posts-scraper', { startUrls: handles.map((h) => ({ url: `https://www.facebook.com/${h}` })), resultsLimit: limit, captionText: true }, undefined, project);
   const out = [];
   for (const p of items) {
     const dt = when(p.time || p.timestamp); const link = p.url || p.topLevelUrl;
@@ -806,7 +819,7 @@ async function sweepFacebook(handles, cutoff, limit) {
   return out;
 }
 
-async function sweepTwitter(handles, cutoff, limit) {
+async function sweepTwitter(handles, cutoff, limit, project) {
   // apidojo/tweet-scraper: pay-per-result X/Twitter scraper. The most reliable
   // way to pull a user's timeline is the `from:` search operator (twitterHandles
   // + start returned 0). `since:` bounds the window server-side; we still filter
@@ -816,7 +829,7 @@ async function sweepTwitter(handles, cutoff, limit) {
     searchTerms: handles.map((h) => `from:${h} since:${since}`),
     maxItems: Math.max(limit * handles.length, handles.length * 2),
     sort: 'Latest', includeSearchTerms: false, onlyVerifiedUsers: false,
-  });
+  }, undefined, project);
   const out = [];
   for (const t of items) {
     const dt = when(t.createdAt || t.created_at); const link = t.url || t.twitterUrl;
@@ -921,7 +934,7 @@ async function searchTwitter(queries, cutoff, limit) {
 }
 
 export async function runSocialFetch(project, date) {
-  if (!APIFY_TOKEN()) throw new Error('APIFY_TOKEN not set');
+  if (!APIFY_TOKEN(project)) throw new Error('APIFY_TOKEN not set');
   const cfg = await getWatchlist(project);
   // Social accounts (activists, orgs, ministers) post SPS-relevant content
   // weekly, not daily — use a wider window than the news fetch.
@@ -948,7 +961,7 @@ export async function runSocialFetch(project, date) {
   // so one failed/slow actor can't sink the batch.
   const swept = await Promise.all(sweeps.map(async ([name, fn, handles, lim, isNews]) => {
     try {
-      const r = await fn(handles, cutoff, lim);
+      const r = await fn(handles, cutoff, lim, project);
       if (isNews) r.forEach((it) => { it.newsOutlet = true; });   // gate as news, not curated-social
       return { name, r };
     } catch (e) { errors.push(`${name}: ${String(e).slice(0, 90)}`); return { name, r: null }; }
@@ -972,7 +985,7 @@ export async function runSocialFetch(project, date) {
         // re-pay for — the same reels every day. A tight window catches each reel once
         // while it's fresh; older reels already carry their transcript in the stored clip.
         const txCutoff = new Date(Date.now() - (cfg.ig_transcript_lookback_days || 2) * 864e5);
-        const txMap = await igReelTranscripts(igHandles, txCutoff, cfg.ig_reel_limit || newsLimit);
+        const txMap = await igReelTranscripts(igHandles, txCutoff, cfg.ig_reel_limit || newsLimit, project);
         igReelCount = txMap.size;
         for (const it of results) {
           if (it.plat !== 'Instagram') continue;
@@ -1024,7 +1037,7 @@ export async function runSocialFetch(project, date) {
     await Promise.all(candidates.slice(i, i + OCR_BATCH).map(async (it) => {
       try {
         const diag = {};
-        const ocr = await imageText(it.img, diag);
+        const ocr = await imageText(it.img, diag, project);
         bumpOut(diag.o || 'unknown');
         if (ocr && ocr !== null) it.extra = ((it.extra || '') + ' ' + ocr).trim().slice(0, 1000);
       } catch { /* best-effort */ }
@@ -1070,8 +1083,8 @@ export async function ogImage(link) {
 // generous free daily limit, so it leads.
 const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
 
-export async function summarizeItems(items) {
-  const key = Netlify.env.get('GEMINI_API_KEY');
+export async function summarizeItems(items, project) {
+  const key = GEMINI_KEY(project);
   if (!key) throw new Error('GEMINI_API_KEY not set');
   const prompt = `You are a media-monitoring analyst preparing the Singapore Prison Service (SPS) daily media monitoring report. Write each entry to the house style below. If an item is in Chinese or Malay, translate it; the output must be in English.
 
