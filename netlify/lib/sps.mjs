@@ -356,13 +356,17 @@ function makeRelevance(cfg) {
   };
 }
 
-// A post is exempt from the keyword-relevance gate only when it's an actual SOCIAL
-// post from an SPS/YRSG own account or a CARE partner (their own activity is in
-// scope). News items must NOT qualify — their `kw` is a search phrase like
-// "Singapore Prison Service" that would otherwise look like an own-account handle.
+// A post self-passes the keyword-relevance gate ONLY when it's an actual SOCIAL post
+// from an SPS/YRSG OWN account (everything they publish is in scope by definition).
+// News items must NOT qualify — their `kw` is a search phrase like "Singapore Prison
+// Service" that would otherwise look like an own-account handle.
+// CARE partners (Prison Fellowship, SANA, SACA, …) are NOT self-passed: their SPS-
+// relevant work hits a topic term and passes normally, but their internal staff /
+// devotional / appreciation posts (e.g. "celebrate Jensen") should not clip. They
+// still route to the care_network section (categorisation) when they do pass.
 const SOCIAL_PLATS = new Set(['Facebook', 'Instagram', 'TikTok', 'YouTube', 'LinkedIn', 'X']);
-const ownOrCarePost = (cfg, it) => SOCIAL_PLATS.has(it.plat) &&
-  !!(ownOrg(cfg, it.kw) || ownOrg(cfg, it.pub) || isCarePartner(cfg, it.kw) || isCarePartner(cfg, it.pub));
+const ownPost = (cfg, it) => SOCIAL_PLATS.has(it.plat) &&
+  !!(ownOrg(cfg, it.kw) || ownOrg(cfg, it.pub));
 
 // Convert a fetched item to a clip (the evidence-log shape used everywhere).
 function itemToClip(it) {
@@ -410,7 +414,7 @@ export function mergeClips(day, results, cfg) {
     // SPS/YRSG own posts and CARE-partner posts are intrinsically in scope (their
     // own activity); everyone else (other accounts + news) must be SPS-relevant
     // — checked against caption PLUS any OCR/subtitle text read from the media.
-    if (!ownOrCarePost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''), it.pub, skipLocaleFor(it), vernFor(it))) continue;
+    if (!ownPost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''), it.pub, skipLocaleFor(it), vernFor(it))) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link);
     day.clips.push(itemToClip(it));
   }
@@ -426,7 +430,7 @@ export function pruneClips(day, cfg) {
   const before = (day.clips || []).length;
   day.clips = (day.clips || []).filter((c) => {
     if (!c.src) return true;          // manually added → keep
-    if (ownOrCarePost(cfg, c)) return true; // own/CARE social post → in scope
+    if (ownPost(cfg, c)) return true; // own SPS/YRSG social post → in scope (CARE partners gated)
     const skipLocale = (SOCIAL_PLATS.has(c.plat) && !c.newsOutlet && !isNewsOutlet(c.pub)) || trustKw.has(c.kw);
     // vernacular item: has CJK text, or came from an SG vernacular masthead
     const vern = /[㐀-鿿]/.test(c.subject || '') || isSgVernOutlet(c.pub);
@@ -1020,7 +1024,7 @@ export async function runSocialFetch(project, date) {
   const isRelOcr = makeRelevance(cfg);
   const needsOcr = (it) => {
     if (it.plat === 'X' || !it.img) return false;
-    if (ownOrCarePost(cfg, it)) return false;
+    if (ownPost(cfg, it)) return false;   // own SPS/YRSG posts already in scope; CARE + others get OCR'd
     const skipLocale = (SOCIAL_PLATS.has(it.plat) && !it.newsOutlet && !isNewsOutlet(it.pub)) || !!it.localTrust;
     const vern = !!it.vern || isSgVernOutlet(it.pub) || /[㐀-鿿]/.test(it.title || '');
     return !isRelOcr((it.title || '') + ' ' + (it.extra || ''), it.pub, skipLocale, vern);
