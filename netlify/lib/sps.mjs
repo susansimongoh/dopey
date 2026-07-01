@@ -686,7 +686,7 @@ async function imageText(imgUrl) {
   if (!key || !imgUrl) return '';
   try {
     const got = await fetchImage(imgUrl);
-    if (!got) return '';
+    if (!got) return null;   // null = image fetch failed (vs '' = fetched, no text) — for OCR diagnostics
     const { ct, data } = got;
     const body = { contents: [{ parts: [
       { inlineData: { mimeType: ct, data } },
@@ -937,11 +937,17 @@ export async function runSocialFetch(project, date) {
   // ~200 images at ~2s each alone approaches the 15-min background cap; batching
   // keeps it well under while staying gentle on the Gemini quota.
   const OCR_BATCH = 6;
+  const ocrStats = {};   // per-platform diagnostics: attempted / fetchFail / gotText
+  const bump = (p, k) => { (ocrStats[p] = ocrStats[p] || { attempted: 0, fetchFail: 0, gotText: 0 })[k]++; };
   for (let i = 0; i < results.length; i += OCR_BATCH) {
     await Promise.all(results.slice(i, i + OCR_BATCH).map(async (it) => {
       try {
-        const ocr = it.img ? await imageText(it.img) : '';
-        if (ocr) it.extra = ((it.extra || '') + ' ' + ocr).trim().slice(0, 1000);
+        if (!it.img) return;
+        const p = it.plat || '?';
+        bump(p, 'attempted');
+        const ocr = await imageText(it.img);
+        if (ocr === null) bump(p, 'fetchFail');            // image fetch failed (CDN block)
+        else if (ocr) { bump(p, 'gotText'); it.extra = ((it.extra || '') + ' ' + ocr).trim().slice(0, 1000); }
       } catch { /* best-effort */ }
     }));
   }
@@ -957,7 +963,7 @@ export async function runSocialFetch(project, date) {
   for (const d of touched) {
     let day = (await getDay(project, d)) || freshDay(d);
     if (byDate[d] && byDate[d].length) { mergeClips(day, byDate[d], cfg); day = await rebuildStories(day, cfg); }
-    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; day.social_search_raw = searchRaw; }
+    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; day.social_search_raw = searchRaw; day.ocr_stats = ocrStats; }
     await putDay(project, day);
   }
   return (await getDay(project, date)) || freshDay(date);
