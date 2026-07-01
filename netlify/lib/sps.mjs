@@ -720,7 +720,13 @@ async function tiktokSubs(v) {
 const when = (v) => { if (!v) return null; try { const d = typeof v === 'number' ? new Date(v * 1000) : new Date(v); return isNaN(d.getTime()) ? null : d; } catch { return null; } };
 
 async function sweepTiktok(handles, cutoff, limit) {
-  const items = await apifyRun('clockworks~tiktok-scraper', { profiles: handles, resultsPerPage: limit, profileScrapeSections: ['videos'], profileSorting: 'latest', excludePinnedPosts: true, shouldDownloadVideos: false, shouldDownloadCovers: false, shouldDownloadSubtitles: true, shouldDownloadSlideshowImages: false });
+  // downloadSubtitlesOptions: DOWNLOAD_SUBTITLES pulls TikTok's OWN existing
+  // captions (populates subtitleLinks) — NOT charged. The AI-transcription modes
+  // (DOWNLOAD_AND_TRANSCRIBE_*/TRANSCRIBE_ALL_VIDEOS) bill the Transcript add-on at
+  // ~$0.041/min/video and are NOT used. This replaces the deprecated boolean
+  // `shouldDownloadSubtitles: true`, which the actor still honours today but could
+  // drop anytime — silently defaulting to NEVER_DOWNLOAD_SUBTITLES and killing subs.
+  const items = await apifyRun('clockworks~tiktok-scraper', { profiles: handles, resultsPerPage: limit, profileScrapeSections: ['videos'], profileSorting: 'latest', excludePinnedPosts: true, shouldDownloadVideos: false, shouldDownloadCovers: false, downloadSubtitlesOptions: 'DOWNLOAD_SUBTITLES', shouldDownloadSlideshowImages: false });
   const out = [];
   for (const v of items) {
     const dt = when(v.createTimeISO || v.createTime); const link = v.webVideoUrl;
