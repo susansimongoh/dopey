@@ -692,11 +692,17 @@ async function imageText(imgUrl) {
       { inlineData: { mimeType: ct, data } },
       { text: 'Transcribe ALL text visible in this image verbatim (captions, posters, on-screen graphics, title cards). If there is no text, reply with nothing. Output only the transcribed text.' },
     ] }], generationConfig: { temperature: 0 } };
+    // Each model sits in its own free-tier quota bucket, so cycling models already
+    // spreads load. On a 429/503 (per-minute rate limit) do one short backoff-retry
+    // before giving up on that model — recovers calls that would otherwise return ''.
     for (const model of ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest']) {
-      const rr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
-      if (rr.ok) { const d = await rr.json(); return ((d?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '').trim().slice(0, 600); }
-      if (![429, 500, 503].includes(rr.status)) break;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const rr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
+        if (rr.ok) { const d = await rr.json(); return ((d?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '').trim().slice(0, 600); }
+        if (![429, 503].includes(rr.status)) { attempt = 2; break; }   // hard error → next model
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 2500));  // rate-limited → back off once
+      }
     }
   } catch { /* best-effort */ }
   return '';
@@ -936,20 +942,41 @@ export async function runSocialFetch(project, date) {
   // gate + summary. Best-effort, in small concurrent batches: fully sequential over
   // ~200 images at ~2s each alone approaches the 15-min background cap; batching
   // keeps it well under while staying gentle on the Gemini quota.
-  const OCR_BATCH = 6;
-  const ocrStats = {};   // per-platform diagnostics: attempted / fetchFail / gotText
+  // OCR is one Gemini vision call per image. Free-tier rate limits CANNOT absorb
+  // ~350 calls/sweep (diagnostic proved gotText≈0, fetchFail=0 = requests rejected,
+  // not fetch failures), so we OCR only the posts that actually NEED it:
+  //   • skip X (tweet media ~never carries SPS text)
+  //   • skip posts already in scope (own/CARE) or already passing on caption+subtitle
+  //     — OCR wouldn't change the gate decision, only enrich the summary
+  //   • what's left are watchlist posts that currently FAIL; on-image text (posters,
+  //     infographics, quote cards) may rescue them. Cap + throttle to stay under RPM.
+  const isRelOcr = makeRelevance(cfg);
+  const needsOcr = (it) => {
+    if (it.plat === 'X' || !it.img) return false;
+    if (ownOrCarePost(cfg, it)) return false;
+    const skipLocale = (SOCIAL_PLATS.has(it.plat) && !it.newsOutlet && !isNewsOutlet(it.pub)) || !!it.localTrust;
+    const vern = !!it.vern || isSgVernOutlet(it.pub) || /[㐀-鿿]/.test(it.title || '');
+    return !isRelOcr((it.title || '') + ' ' + (it.extra || ''), it.pub, skipLocale, vern);
+  };
+  // Prioritise news-outlet + curated posts; hard-cap so a news-heavy sweep can't
+  // flood the quota. Beyond the cap, posts keep their caption-only relevance.
+  const OCR_CAP = 60, OCR_BATCH = 3;
+  const candidates = results.filter(needsOcr)
+    .sort((a, b) => (b.newsOutlet ? 1 : 0) - (a.newsOutlet ? 1 : 0))
+    .slice(0, OCR_CAP);
+  const ocrStats = { cap: OCR_CAP, candidates: results.filter(needsOcr).length };   // + per-platform below
   const bump = (p, k) => { (ocrStats[p] = ocrStats[p] || { attempted: 0, fetchFail: 0, gotText: 0 })[k]++; };
-  for (let i = 0; i < results.length; i += OCR_BATCH) {
-    await Promise.all(results.slice(i, i + OCR_BATCH).map(async (it) => {
+  for (let i = 0; i < candidates.length; i += OCR_BATCH) {
+    await Promise.all(candidates.slice(i, i + OCR_BATCH).map(async (it) => {
       try {
-        if (!it.img) return;
         const p = it.plat || '?';
         bump(p, 'attempted');
         const ocr = await imageText(it.img);
-        if (ocr === null) bump(p, 'fetchFail');            // image fetch failed (CDN block)
+        if (ocr === null) bump(p, 'fetchFail');
         else if (ocr) { bump(p, 'gotText'); it.extra = ((it.extra || '') + ' ' + ocr).trim().slice(0, 1000); }
       } catch { /* best-effort */ }
     }));
+    if (i + OCR_BATCH < candidates.length) await new Promise((r) => setTimeout(r, 1500));  // throttle: stay under Gemini RPM
   }
   // Bucket each post into the day it was PUBLISHED (not the sweep day), so a sweep
   // distributes its window across the right days and never piles last week's posts
