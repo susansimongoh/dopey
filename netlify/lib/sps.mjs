@@ -967,7 +967,12 @@ export async function runSocialFetch(project, date) {
     const igHandles = [...(acc.instagram || []), ...(news.instagram || [])];
     if (igHandles.length) {
       try {
-        const txMap = await igReelTranscripts(igHandles, cutoff, cfg.ig_reel_limit || newsLimit);
+        // Transcribe only RECENT reels (default 2 days), NOT the full 7-day social
+        // window: the cron re-runs daily, so a 7-day window would re-transcribe — and
+        // re-pay for — the same reels every day. A tight window catches each reel once
+        // while it's fresh; older reels already carry their transcript in the stored clip.
+        const txCutoff = new Date(Date.now() - (cfg.ig_transcript_lookback_days || 2) * 864e5);
+        const txMap = await igReelTranscripts(igHandles, txCutoff, cfg.ig_reel_limit || newsLimit);
         igReelCount = txMap.size;
         for (const it of results) {
           if (it.plat !== 'Instagram') continue;
