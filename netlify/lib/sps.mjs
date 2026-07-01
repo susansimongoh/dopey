@@ -708,7 +708,7 @@ async function imageText(imgUrl, diag, project) {
     // Each model sits in its own free-tier quota bucket, so cycling models already
     // spreads load. On a 429/503 (per-minute rate limit) do one short backoff-retry
     // before giving up on that model — recovers calls that would otherwise return ''.
-    for (const model of ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest']) {
+    for (const model of GEMINI_MODELS) {   // gemini-2.0-flash retired — use the shared current list
       for (let attempt = 0; attempt < 2; attempt++) {
         const rr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
           { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(25000) });
@@ -1081,7 +1081,9 @@ export async function ogImage(link) {
 // Tried in order; on a 429 (free-tier quota exhausted) we fall through to the
 // next model, which sits in a separate quota bucket. 2.0-flash has the most
 // generous free daily limit, so it leads.
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
+// gemini-2.0-flash was RETIRED by Google (404) — dropped. `gemini-flash-latest` is
+// an alias that tracks the current flash model, so it survives future renames.
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
 
 export async function summarizeItems(items, project) {
   const key = GEMINI_KEY(project);
@@ -1127,7 +1129,8 @@ ${JSON.stringify(items)}`;
         return JSON.parse(txt);
       }
       lastErr = 'Gemini ' + r.status + ' ' + (await r.text()).slice(0, 160);
-      if (!TRANSIENT.has(r.status)) throw new Error(lastErr);   // hard error → surface it
+      if (r.status === 404) break;                             // model retired/unavailable → try next model
+      if (!TRANSIENT.has(r.status)) throw new Error(lastErr);   // real error (400/401/403) → surface it
       if (attempt < 2) await sleep(700 * (attempt + 1));   // backoff before retrying same model
     }
     // exhausted retries on this model → next model (fresh quota / capacity)
