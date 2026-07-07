@@ -21,5 +21,7 @@ export default async () => {
   }
 };
 
-// Cron is UTC. 09:45 Asia/Singapore (UTC+8) = 01:45 UTC, daily.
-export const config = { schedule: '45 1 * * *' };
+// Cron is UTC. 09:45 Asia/Singapore (UTC+8) = 01:45 UTC. Weekdays only (Mon–Fri):
+// at 01:45 UTC the UTC weekday still equals the SGT weekday (01:45 + 8h = 09:45 same
+// day), so `1-5` = Mon–Fri Singapore time. No weekend sweeps.
+export const config = { schedule: '45 1 * * 1-5' };
