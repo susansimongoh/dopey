@@ -391,10 +391,16 @@ export function mergeClips(day, results, cfg) {
   // vernacular SG outlet, …) — their results are Singapore by construction, so
   // they skip the locale co-signal (a topic match is enough).
   const trustKw = new Set((cfg.keywords || []).filter((k) => k.localTrust).map((k) => k.q));
+  // `locale_strict` accounts are curated handles that ALSO post regional/foreign news
+  // (Plan_B, Wake Up SG, TOC…). They must carry a Singapore locale word to pass, so
+  // their foreign court/jail posts (e.g. "Indonesian minister jailed") don't clip.
+  const localeStrict = new Set((cfg.locale_strict || []).map(_normHandle));
+  const isStrict = (it) => localeStrict.has(_normHandle(it.kw)) || localeStrict.has(_normHandle(it.pub));
   // A social post skips the locale co-signal ONLY if it's from a curated activist/
   // org account (locale implied). A NEWS-OUTLET social post is gated like news
-  // (its masthead runs a world desk), and a vernacular outlet uses the masthead path.
-  const skipLocaleFor = (it) => (SOCIAL_PLATS.has(it.plat) && !it.newsOutlet && !isNewsOutlet(it.pub)) || !!it.localTrust || trustKw.has(it.kw);
+  // (its masthead runs a world desk), a vernacular outlet uses the masthead path,
+  // and a locale_strict account never skips.
+  const skipLocaleFor = (it) => !isStrict(it) && ((SOCIAL_PLATS.has(it.plat) && !it.newsOutlet && !isNewsOutlet(it.pub)) || !!it.localTrust || trustKw.has(it.kw));
   const vernFor = (it) => !!it.vern || isSgVernOutlet(it.pub) || /[㐀-鿿]/.test(it.title || '');
   const isRelevant = makeRelevance(cfg);
   day.clips = day.clips || [];
@@ -427,11 +433,13 @@ export function mergeClips(day, results, cfg) {
 export function pruneClips(day, cfg) {
   const isRelevant = makeRelevance(cfg);
   const trustKw = new Set((cfg.keywords || []).filter((k) => k.localTrust).map((k) => k.q));
+  const localeStrict = new Set((cfg.locale_strict || []).map(_normHandle));
+  const isStrict = (c) => localeStrict.has(_normHandle(c.kw)) || localeStrict.has(_normHandle(c.pub));
   const before = (day.clips || []).length;
   day.clips = (day.clips || []).filter((c) => {
     if (!c.src) return true;          // manually added → keep
     if (ownPost(cfg, c)) return true; // own SPS/YRSG social post → in scope (CARE partners gated)
-    const skipLocale = (SOCIAL_PLATS.has(c.plat) && !c.newsOutlet && !isNewsOutlet(c.pub)) || trustKw.has(c.kw);
+    const skipLocale = !isStrict(c) && ((SOCIAL_PLATS.has(c.plat) && !c.newsOutlet && !isNewsOutlet(c.pub)) || trustKw.has(c.kw));
     // vernacular item: has CJK text, or came from an SG vernacular masthead
     const vern = /[㐀-鿿]/.test(c.subject || '') || isSgVernOutlet(c.pub);
     return isRelevant((c.subject || '') + ' ' + (c.extra || ''), c.pub, skipLocale, vern);
@@ -984,11 +992,13 @@ export async function runSocialFetch(project, date) {
     const igHandles = [...(acc.instagram || []), ...(news.instagram || [])];
     if (igHandles.length) {
       try {
-        // Transcribe only RECENT reels (default 2 days), NOT the full 7-day social
-        // window: the cron re-runs daily, so a 7-day window would re-transcribe — and
-        // re-pay for — the same reels every day. A tight window catches each reel once
-        // while it's fresh; older reels already carry their transcript in the stored clip.
-        const txCutoff = new Date(Date.now() - (cfg.ig_transcript_lookback_days || 2) * 864e5);
+        // Transcribe only RECENT reels (default 1 day), NOT the full 7-day social
+        // window: the cron re-runs daily, so a wide window would re-transcribe — and
+        // re-pay for — the same reels every day. 1 day ≈ halves the 2-day cost (~$0.041/
+        // min/reel). Trade-off: reels posted over the (now weekday-only) weekend miss
+        // their transcript, but are still captured as clips via caption + the main sweep.
+        // Older reels already carry their transcript in the stored clip.
+        const txCutoff = new Date(Date.now() - (cfg.ig_transcript_lookback_days || 1) * 864e5);
         const txMap = await igReelTranscripts(igHandles, txCutoff, cfg.ig_reel_limit || newsLimit, project);
         igReelCount = txMap.size;
         for (const it of results) {
@@ -1025,7 +1035,9 @@ export async function runSocialFetch(project, date) {
   const needsOcr = (it) => {
     if (it.plat === 'X' || !it.img) return false;
     if (ownPost(cfg, it)) return false;   // own SPS/YRSG posts already in scope; CARE + others get OCR'd
-    const skipLocale = (SOCIAL_PLATS.has(it.plat) && !it.newsOutlet && !isNewsOutlet(it.pub)) || !!it.localTrust;
+    const strict = (cfg.locale_strict || []).map(_normHandle);
+    const isStrict = strict.includes(_normHandle(it.kw)) || strict.includes(_normHandle(it.pub));
+    const skipLocale = !isStrict && ((SOCIAL_PLATS.has(it.plat) && !it.newsOutlet && !isNewsOutlet(it.pub)) || !!it.localTrust);
     const vern = !!it.vern || isSgVernOutlet(it.pub) || /[㐀-鿿]/.test(it.title || '');
     return !isRelOcr((it.title || '') + ' ' + (it.extra || ''), it.pub, skipLocale, vern);
   };
