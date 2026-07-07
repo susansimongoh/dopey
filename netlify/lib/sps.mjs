@@ -379,6 +379,7 @@ function itemToClip(it) {
     extra: it.extra || '',   // OCR / subtitle text read out of the image/video
     ...(it.newsOutlet ? { newsOutlet: true } : {}),   // news-outlet social post (gated as news)
     ...(it.discovered ? { discovered: true } : {}),  // found via keyword search, not account sweep
+    ...(it.audioUrl ? { audioUrl: it.audioUrl } : {}),  // transient: reel audio for post-gate Gemini transcription (stripped after)
   };
 }
 
@@ -782,33 +783,63 @@ async function sweepInstagram(handles, cutoff, limit, project) {
   for (const p of items) {
     const dt = when(p.timestamp); const link = p.url;
     if (!dt || !link || dt < cutoff) continue;
-    out.push(await socialItem('Instagram', p.ownerUsername || 'unknown', p.caption, link, dt,
-      { plays: p.videoPlayCount || 0, likes: p.likesCount || 0, comments: p.commentsCount || 0, shares: 0 }, p.displayUrl));
+    const it = await socialItem('Instagram', p.ownerUsername || 'unknown', p.caption, link, dt,
+      { plays: p.videoPlayCount || 0, likes: p.likesCount || 0, comments: p.commentsCount || 0, shares: 0 }, p.displayUrl);
+    // Reel audio track (small, ~1-2MB) → fed to Gemini for a spoken transcript POST-GATE.
+    if (p.audioUrl || p.videoUrl) it.audioUrl = p.audioUrl || p.videoUrl;
+    out.push(it);
   }
   return out;
 }
 // Shortcode from any IG post/reel URL — the stable key shared by both scrapers.
-const igShortcode = (url) => (String(url || '').match(/\/(?:reels?|p|tv)\/([^/?#]+)/) || [])[1] || null;
-// Instagram reel transcripts (spoken audio) via the dedicated reel scraper's paid
-// includeTranscript add-on (~$0.041/started-min/reel). The standard IG scraper can't
-// transcribe. Returns a shortcode→transcript map used to ENRICH the main IG sweep's
-// posts in place (no separate clips → no duplicates). onlyPostsNewerThan bounds the
-// window so we don't pay to transcribe old reels.
-async function igReelTranscripts(handles, cutoff, limit, project) {
-  const since = cutoff.toISOString().slice(0, 10);
-  const items = await apifyRun('apify~instagram-reel-scraper', {
-    username: handles, resultsLimit: limit, onlyPostsNewerThan: since,
-    includeTranscript: true, skipPinnedPosts: true,
-  }, undefined, project);
-  const map = new Map();
-  for (const r of items) {
-    const code = r.shortCode || r.code || igShortcode(r.url) || igShortcode(r.inputUrl);
-    const dt = when(r.timestamp);
-    if (!code || (dt && dt < cutoff)) continue;
-    const tx = r.transcript || r.videoTranscript || r.transcriptText || r.captions || '';
-    if (tx && typeof tx === 'string') map.set(code, tx.trim());
+// Gemini transcribes a reel's spoken audio. The reel `audioUrl` (from the IG scraper)
+// is a small ~1-2MB AAC/mp4 track that — unlike IG image CDN URLs — fetches fine
+// server-side, so we send it inline to Gemini (reusing the paid key) instead of paying
+// Apify's per-minute ASR add-on. Best-effort; skips empty or oversized (>18MB) audio.
+async function transcribeAudio(audioUrl, project) {
+  const key = GEMINI_KEY(project);
+  if (!key || !audioUrl) return '';
+  try {
+    const r = await fetch(audioUrl, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) return '';
+    const ct = (r.headers.get('content-type') || 'audio/mp4').split(';')[0];
+    const buf = await r.arrayBuffer();
+    if (!buf.byteLength || buf.byteLength > 18 * 1024 * 1024) return '';
+    const data = Buffer.from(buf).toString('base64');
+    const body = { contents: [{ parts: [
+      { inlineData: { mimeType: ct, data } },
+      { text: 'Transcribe the spoken words in this audio verbatim, in the original language. Output only the transcript; if there is no speech, output nothing.' },
+    ] }], generationConfig: { temperature: 0 } };
+    for (const model of GEMINI_MODELS) {
+      const rr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
+      if (rr.ok) {
+        const d = await rr.json();
+        return ((d?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '').trim().slice(0, 1000);
+      }
+      if (rr.status === 404) continue;                    // retired model → next
+      if (![429, 500, 503].includes(rr.status)) break;    // hard error → stop
+    }
+  } catch { /* best-effort */ }
+  return '';
+}
+// POST-GATE reel transcription: for IG clips that PASSED the gate this run and carry a
+// fresh `audioUrl`, transcribe via Gemini and fold into `extra`. Each reel is done once
+// (`reelTx` flag); the transient audioUrl is stripped after (short-lived signed URL).
+// Capped per run so a backlog can't blow Netlify's time budget. Returns count transcribed.
+async function transcribeKeptReels(day, project) {
+  const todo = (day.clips || []).filter((c) => c.plat === 'Instagram' && c.audioUrl && !c.reelTx).slice(0, 12);
+  let n = 0;
+  // Small parallel batches so a handful of ~60s Gemini calls can't blow the 15-min cap.
+  for (let i = 0; i < todo.length; i += 3) {
+    await Promise.all(todo.slice(i, i + 3).map(async (c) => {
+      try { const tx = await transcribeAudio(c.audioUrl, project); if (tx) { c.extra = ((c.extra || '') + ' ' + tx).trim().slice(0, 1000); n++; } }
+      catch { /* best-effort */ }
+      c.reelTx = true; delete c.audioUrl;   // done once; drop the expiring URL
+    }));
   }
-  return map;
+  for (const c of (day.clips || [])) if (c.audioUrl) { delete c.audioUrl; c.reelTx = true; }  // never persist expiring URLs
+  return n;
 }
 async function sweepFacebook(handles, cutoff, limit, project) {
   // captionText: true → include video transcripts (spoken words) for FB video posts.
@@ -982,33 +1013,11 @@ export async function runSocialFetch(project, date) {
     if (r) { rawCounts[name] = (rawCounts[name] || 0) + r.length; results = results.concat(r); }
     else rawCounts[name] = rawCounts[name] || 'ERR';
   }
-  // Instagram spoken-audio transcripts (paid reel add-on, ~$0.041/started-min/reel).
-  // The standard IG scraper can't transcribe, so we run the dedicated reel scraper on
-  // the same handles and fold each reel's transcript into the matching post's `extra`
-  // (matched by shortcode) — gives IG the same spoken-content coverage as TikTok subs
-  // and FB transcripts. Bounded by cutoff; disable with cfg.ig_transcripts === false.
+  // Instagram reel transcripts are done POST-GATE via Gemini (see transcribeKeptReels
+  // in the bucketing loop below) — we transcribe only reels that actually pass the gate
+  // (~a handful/day) using the reel's audioUrl + our existing paid Gemini key, instead
+  // of the Apify per-minute ASR add-on on all ~60-70 recent reels. ~free vs ~$30-90/mo.
   let igReelCount = 0;
-  if (cfg.ig_transcripts !== false) {
-    const igHandles = [...(acc.instagram || []), ...(news.instagram || [])];
-    if (igHandles.length) {
-      try {
-        // Transcribe only RECENT reels (default 1 day), NOT the full 7-day social
-        // window: the cron re-runs daily, so a wide window would re-transcribe — and
-        // re-pay for — the same reels every day. 1 day ≈ halves the 2-day cost (~$0.041/
-        // min/reel). Trade-off: reels posted over the (now weekday-only) weekend miss
-        // their transcript, but are still captured as clips via caption + the main sweep.
-        // Older reels already carry their transcript in the stored clip.
-        const txCutoff = new Date(Date.now() - (cfg.ig_transcript_lookback_days || 1) * 864e5);
-        const txMap = await igReelTranscripts(igHandles, txCutoff, cfg.ig_reel_limit || newsLimit, project);
-        igReelCount = txMap.size;
-        for (const it of results) {
-          if (it.plat !== 'Instagram') continue;
-          const tx = txMap.get(igShortcode(it.link));
-          if (tx) it.extra = ((it.extra || '') + ' ' + tx).trim().slice(0, 1000);
-        }
-      } catch (e) { errors.push('IG transcripts: ' + String(e).slice(0, 80)); }
-    }
-  }
   // Keyword-first discovery is DISABLED on all four platforms. TikTok search 400s
   // (actor schema changed), Instagram hashtag search returns 0 (multi-word queries
   // don't map to real hashtags), Facebook search-page scraping is login-gated, and
@@ -1071,7 +1080,7 @@ export async function runSocialFetch(project, date) {
   const touched = new Set([date, ...Object.keys(byDate)]);
   for (const d of touched) {
     let day = (await getDay(project, d)) || freshDay(d);
-    if (byDate[d] && byDate[d].length) { mergeClips(day, byDate[d], cfg); day = await rebuildStories(day, cfg); }
+    if (byDate[d] && byDate[d].length) { mergeClips(day, byDate[d], cfg); igReelCount += await transcribeKeptReels(day, project); day = await rebuildStories(day, cfg); }
     if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; day.social_search_raw = searchRaw; day.ocr_stats = ocrStats; day.ig_reels = igReelCount; }
     await putDay(project, day);
   }
