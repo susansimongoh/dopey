@@ -803,13 +803,15 @@ export async function transcribeAudio(audioUrl, project, diag) {
     const r = await fetch(audioUrl, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) });
     if (diag) diag.fetch = r.status;
     if (!r.ok) return '';
-    const ct = (r.headers.get('content-type') || 'audio/mp4').split(';')[0];
+    // IG serves the audio-only track with a misleading `video/mp4` content-type; sent as
+    // video, Gemini errors "0 Frames found". Force an AUDIO mime so it transcribes the
+    // audio track (the URL we pass is p.audioUrl — the extracted AAC-in-mp4 track).
     const buf = await r.arrayBuffer();
-    if (diag) { diag.bytes = buf.byteLength; diag.ct = ct; }
+    if (diag) { diag.bytes = buf.byteLength; diag.ct = r.headers.get('content-type'); }
     if (!buf.byteLength || buf.byteLength > 18 * 1024 * 1024) { if (diag) diag.stage = 'bad-size'; return ''; }
     const data = Buffer.from(buf).toString('base64');
     const body = { contents: [{ parts: [
-      { inlineData: { mimeType: ct, data } },
+      { inlineData: { mimeType: 'audio/mp4', data } },
       { text: 'Transcribe the spoken words in this audio verbatim, in the original language. Output only the transcript; if there is no speech, output nothing.' },
     ] }], generationConfig: { temperature: 0 } };
     for (const model of GEMINI_MODELS) {
