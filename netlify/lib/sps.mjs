@@ -796,20 +796,18 @@ async function sweepInstagram(handles, cutoff, limit, project) {
 // is a small ~1-2MB AAC/mp4 track that — unlike IG image CDN URLs — fetches fine
 // server-side, so we send it inline to Gemini (reusing the paid key) instead of paying
 // Apify's per-minute ASR add-on. Best-effort; skips empty or oversized (>18MB) audio.
-export async function transcribeAudio(audioUrl, project, diag) {
+async function transcribeAudio(audioUrl, project) {
   const key = GEMINI_KEY(project);
-  if (!key || !audioUrl) { if (diag) diag.stage = 'no-key-or-url'; return ''; }
+  if (!key || !audioUrl) return '';
   try {
     const r = await fetch(audioUrl, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) });
-    if (diag) diag.fetch = r.status;
     if (!r.ok) return '';
-    // IG serves the audio-only track with a misleading `video/mp4` content-type; sent as
-    // video, Gemini errors "0 Frames found". Force an AUDIO mime so it transcribes the
-    // audio track (the URL we pass is p.audioUrl — the extracted AAC-in-mp4 track).
     const buf = await r.arrayBuffer();
-    if (diag) { diag.bytes = buf.byteLength; diag.ct = r.headers.get('content-type'); }
-    if (!buf.byteLength || buf.byteLength > 18 * 1024 * 1024) { if (diag) diag.stage = 'bad-size'; return ''; }
+    if (!buf.byteLength || buf.byteLength > 18 * 1024 * 1024) return '';
     const data = Buffer.from(buf).toString('base64');
+    // IG serves the audio-only track with a misleading `video/mp4` content-type; sent as
+    // video Gemini errors "0 Frames found", so we force an AUDIO mime (the URL we pass is
+    // p.audioUrl — the extracted AAC-in-mp4 track). Verified against ground-truth transcript.
     const body = { contents: [{ parts: [
       { inlineData: { mimeType: 'audio/mp4', data } },
       { text: 'Transcribe the spoken words in this audio verbatim, in the original language. Output only the transcript; if there is no speech, output nothing.' },
@@ -819,10 +817,8 @@ export async function transcribeAudio(audioUrl, project, diag) {
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
       if (rr.ok) {
         const d = await rr.json();
-        if (diag) diag.finish = d?.candidates?.[0]?.finishReason || '?';
         return ((d?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '').trim().slice(0, 1000);
       }
-      if (diag) { diag.gemini = rr.status; diag.gerr = (await rr.text()).slice(0, 300); }
       if (rr.status === 404) continue;                    // retired model → next
       if (![429, 500, 503].includes(rr.status)) break;    // hard error → stop
     }
