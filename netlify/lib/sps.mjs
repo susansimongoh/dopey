@@ -796,7 +796,7 @@ async function sweepInstagram(handles, cutoff, limit, project) {
 // is a small ~1-2MB AAC/mp4 track that — unlike IG image CDN URLs — fetches fine
 // server-side, so we send it inline to Gemini (reusing the paid key) instead of paying
 // Apify's per-minute ASR add-on. Best-effort; skips empty or oversized (>18MB) audio.
-async function transcribeAudio(audioUrl, project) {
+export async function transcribeAudio(audioUrl, project) {
   const key = GEMINI_KEY(project);
   if (!key || !audioUrl) return '';
   try {

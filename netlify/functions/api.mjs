@@ -2,7 +2,7 @@
 // Heavy fetching lives in the *-background functions.
 import { getDay, putDay, listDays, getWatchlist, putWatchlist, ogImage, summarizeItems,
   hashPassword, makeToken, verifyToken, getUsers, putUsers, findUser, rebuildStories, pruneClips,
-  listProjects, putProjects } from '../lib/sps.mjs';
+  listProjects, putProjects, transcribeAudio } from '../lib/sps.mjs';
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -147,6 +147,11 @@ export default async (req) => {
       await putDay(p, updated);
       const stories = (updated.stories || []);
       return json({ ok: true, date, pruned, clips: (updated.clips || []).length, stories: stories.length, fallbacks: stories.filter((s) => s.llm === false).length });
+    }
+    if (req.method === 'POST' && path === '/api/transcribe-test') {   // TEMP: verify Gemini audio transcription
+      const { audioUrl, project } = await req.json();
+      const tx = await transcribeAudio(audioUrl, project || 'sps');
+      return json({ ok: true, len: (tx || '').length, transcript: tx });
     }
     if (req.method === 'POST' && path === '/api/summarize') {
       const { items, project } = await req.json();
