@@ -796,15 +796,17 @@ async function sweepInstagram(handles, cutoff, limit, project) {
 // is a small ~1-2MB AAC/mp4 track that — unlike IG image CDN URLs — fetches fine
 // server-side, so we send it inline to Gemini (reusing the paid key) instead of paying
 // Apify's per-minute ASR add-on. Best-effort; skips empty or oversized (>18MB) audio.
-export async function transcribeAudio(audioUrl, project) {
+export async function transcribeAudio(audioUrl, project, diag) {
   const key = GEMINI_KEY(project);
-  if (!key || !audioUrl) return '';
+  if (!key || !audioUrl) { if (diag) diag.stage = 'no-key-or-url'; return ''; }
   try {
     const r = await fetch(audioUrl, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) });
+    if (diag) diag.fetch = r.status;
     if (!r.ok) return '';
     const ct = (r.headers.get('content-type') || 'audio/mp4').split(';')[0];
     const buf = await r.arrayBuffer();
-    if (!buf.byteLength || buf.byteLength > 18 * 1024 * 1024) return '';
+    if (diag) { diag.bytes = buf.byteLength; diag.ct = ct; }
+    if (!buf.byteLength || buf.byteLength > 18 * 1024 * 1024) { if (diag) diag.stage = 'bad-size'; return ''; }
     const data = Buffer.from(buf).toString('base64');
     const body = { contents: [{ parts: [
       { inlineData: { mimeType: ct, data } },
@@ -815,12 +817,14 @@ export async function transcribeAudio(audioUrl, project) {
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
       if (rr.ok) {
         const d = await rr.json();
+        if (diag) diag.finish = d?.candidates?.[0]?.finishReason || '?';
         return ((d?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '').trim().slice(0, 1000);
       }
+      if (diag) { diag.gemini = rr.status; diag.gerr = (await rr.text()).slice(0, 300); }
       if (rr.status === 404) continue;                    // retired model → next
       if (![429, 500, 503].includes(rr.status)) break;    // hard error → stop
     }
-  } catch { /* best-effort */ }
+  } catch (e) { if (diag) diag.exc = String(e).slice(0, 200); /* best-effort */ }
   return '';
 }
 // POST-GATE reel transcription: for IG clips that PASSED the gate this run and carry a

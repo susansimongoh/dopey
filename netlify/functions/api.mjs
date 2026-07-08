@@ -150,8 +150,9 @@ export default async (req) => {
     }
     if (req.method === 'POST' && path === '/api/transcribe-test') {   // TEMP: verify Gemini audio transcription
       const { audioUrl, project } = await req.json();
-      const tx = await transcribeAudio(audioUrl, project || 'sps');
-      return json({ ok: true, len: (tx || '').length, transcript: tx });
+      const diag = {};
+      const tx = await transcribeAudio(audioUrl, project || 'sps', diag);
+      return json({ ok: true, len: (tx || '').length, transcript: tx, diag });
     }
     if (req.method === 'POST' && path === '/api/summarize') {
       const { items, project } = await req.json();
