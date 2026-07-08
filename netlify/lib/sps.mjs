@@ -822,7 +822,7 @@ async function transcribeAudio(audioUrl, project) {
       if (rr.status === 404) continue;                    // retired model → next
       if (![429, 500, 503].includes(rr.status)) break;    // hard error → stop
     }
-  } catch (e) { if (diag) diag.exc = String(e).slice(0, 200); /* best-effort */ }
+  } catch { /* best-effort */ }
   return '';
 }
 // POST-GATE reel transcription: for IG clips that PASSED the gate this run and carry a
