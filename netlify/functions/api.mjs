@@ -174,5 +174,5 @@ export default async (req) => {
 };
 
 export const config = {
-  path: ['/api/status', '/api/login', '/api/set-password', '/api/users', '/api/projects', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/regen', '/api/snap', '/api/summarize'],
+  path: ['/api/status', '/api/login', '/api/set-password', '/api/users', '/api/projects', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/regen', '/api/snap', '/api/summarize', '/api/transcribe-test'],
 };
