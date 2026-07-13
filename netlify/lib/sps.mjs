@@ -669,7 +669,17 @@ async function apifyRun(actor, input, maxWait = 600000, project) {
 }
 async function httpPostJson(url, body) {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
+  if (!r.ok) {
+    // Surface the API's error reason, not just the status. A bare "HTTP 403" from
+    // Apify hid a 3-day outage whose body said "usage-limit-exceeded" ($100 monthly
+    // cap hit, Jul 2026) — with the type in social_errors the diagnosis is instant.
+    let detail = '';
+    try {
+      const t = await r.text();
+      try { const j = JSON.parse(t); detail = (j.error && (j.error.type || j.error.message)) || ''; } catch { detail = t; }
+    } catch { /* body unreadable */ }
+    throw new Error('HTTP ' + r.status + (detail ? ' ' + String(detail).slice(0, 120) : ''));
+  }
   return r.json();
 }
 function traction(plat, eng) {
