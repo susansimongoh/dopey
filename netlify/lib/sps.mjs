@@ -379,6 +379,7 @@ function itemToClip(it) {
     extra: it.extra || '',   // OCR / subtitle text read out of the image/video
     ...(it.newsOutlet ? { newsOutlet: true } : {}),   // news-outlet social post (gated as news)
     ...(it.discovered ? { discovered: true } : {}),  // found via keyword search, not account sweep
+    ...(it.localTrust ? { localTrust: true } : {}),  // SG-confirmed (dateline / SG-scoped query) — survives re-prune
     ...(it.audioUrl ? { audioUrl: it.audioUrl } : {}),  // transient: reel audio for post-gate Gemini transcription (stripped after)
   };
 }
@@ -440,7 +441,7 @@ export function pruneClips(day, cfg) {
   day.clips = (day.clips || []).filter((c) => {
     if (!c.src) return true;          // manually added → keep
     if (ownPost(cfg, c)) return true; // own SPS/YRSG social post → in scope (CARE partners gated)
-    const skipLocale = !isStrict(c) && ((SOCIAL_PLATS.has(c.plat) && !c.newsOutlet && !isNewsOutlet(c.pub)) || trustKw.has(c.kw));
+    const skipLocale = !isStrict(c) && ((SOCIAL_PLATS.has(c.plat) && !c.newsOutlet && !isNewsOutlet(c.pub)) || !!c.localTrust || trustKw.has(c.kw));
     // vernacular item: has CJK text, or came from an SG vernacular masthead
     const vern = /[㐀-鿿]/.test(c.subject || '') || isSgVernOutlet(c.pub);
     return isRelevant((c.subject || '') + ' ' + (c.extra || ''), c.pub, skipLocale, vern);
@@ -606,7 +607,33 @@ async function gatherNews(cfg, lookback, errors) {
   let results = (await Promise.all(tasks)).flat();
   const seenT = new Set(); const uniq = [];
   for (const it of results) { const k = it.title.toLowerCase().replace(/\W+/g, '').slice(0, 80); if (k && seenT.has(k)) continue; seenT.add(k); uniq.push(it); }
+  await confirmSgDatelines(uniq, cfg);
   return uniq;
+}
+
+// SG mastheads open local stories with the classic dateline as the first words of
+// the first paragraph — "SINGAPORE: …" (CNA) / "SINGAPORE – …" (ST/BT) — while
+// foreign stories dateline their own city (KUALA LUMPUR:, JAKARTA:). Court headlines
+// often carry no locale word at all ("Woman jailed for money-mule romance scam"), so
+// a topic-matching English-outlet item that FAILS the headline locale check gets one
+// cheap article fetch: a SINGAPORE dateline in the body marks it localTrust
+// (SG-by-construction → gate passes on topic alone). Validated live: CNA + ST local
+// stories hit (`>SINGAPORE:` / `>SINGAPORE – ` in the article HTML), foreign don't.
+async function confirmSgDatelines(items, cfg) {
+  const lc = (a) => (a || []).filter(Boolean).map((s) => String(s).toLowerCase());
+  const anchors = lc([...(cfg.anchors || []), ...((cfg.keywords || []).map((k) => k.q))]);
+  const topics = lc(cfg.topics || cfg.topic_terms || []);
+  const locale = lc(cfg.locale || []);
+  if (!locale.length || !topics.length) return;   // non-localised project → gate doesn't need this
+  const DATELINE = /[>"\n]\s*SINGAPORE\s*[:–—-]/;
+  const cand = items.filter((it) => it.outlet && !it.vern && it.link
+    && relevant(it.title, topics) && !relevant(it.title, [...anchors, ...locale])).slice(0, 15);
+  for (let i = 0; i < cand.length; i += 5) {
+    await Promise.all(cand.slice(i, i + 5).map(async (it) => {
+      try { if (DATELINE.test(await httpText(it.link, 9000))) it.localTrust = true; }
+      catch { /* best-effort — item just stays gated on its headline */ }
+    }));
+  }
 }
 
 export async function runNewsFetch(project, date) {
