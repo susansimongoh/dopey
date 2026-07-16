@@ -6,7 +6,7 @@ import { listProjects } from '../lib/sps.mjs';
 
 export default async () => {
   const base = process.env.URL || process.env.DEPLOY_URL || 'https://spsmedia.netlify.app';
-  const today = new Date().toISOString().slice(0, 10);   // at 01:45 UTC the SGT date matches
+  const today = new Date().toISOString().slice(0, 10);   // at 02:50 UTC the SGT date matches
   const post = (path, project) => fetch(`${base}${path}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: today, project }),
   }).then((r) => r.status).catch((e) => 'ERR ' + e.message);
@@ -21,7 +21,8 @@ export default async () => {
   }
 };
 
-// Cron is UTC. 09:45 Asia/Singapore (UTC+8) = 01:45 UTC. Weekdays only (Mon–Fri):
-// at 01:45 UTC the UTC weekday still equals the SGT weekday (01:45 + 8h = 09:45 same
-// day), so `1-5` = Mon–Fri Singapore time. No weekend sweeps.
-export const config = { schedule: '45 1 * * 1-5' };
+// Cron is UTC. 10:50 Asia/Singapore (UTC+8) = 02:50 UTC, weekdays only (Mon–Fri;
+// at 02:50 UTC the UTC weekday == SGT weekday). Runs just AFTER the 10:45 SGT
+// report cutoff (see reportDay in sps.mjs), so each morning's sweep generates the
+// day's report with its full window: yesterday 10:45 → today 10:45.
+export const config = { schedule: '50 2 * * 1-5' };

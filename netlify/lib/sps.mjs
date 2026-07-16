@@ -613,13 +613,24 @@ export async function runNewsFetch(project, date) {
   const cfg = await getWatchlist(project);
   const errors = [];
   const uniq = await gatherNews(cfg, cfg.lookback_days || 2, errors);
-  // re-read latest day in case a social sweep wrote concurrently
-  let day = (await getDay(project, date)) || freshDay(date);
-  mergeClips(day, uniq, cfg);
-  day.fetched_at = new Date().toISOString();
-  day.fetch_errors = errors;
-  await putDay(project, day);
-  return day;
+  // Bucket each item into its REPORT day (10:45 SGT cutoff — see reportDay) instead
+  // of dumping everything onto the fetch day, so a story published yesterday after
+  // 10:45 lands on today's report page and one from yesterday morning lands on
+  // yesterday's. Items without a parseable publish time fall back to the fetch day.
+  const byDate = {};
+  for (const it of uniq) {
+    const d = reportDay(it.published) || date;
+    (byDate[d] = byDate[d] || []).push(it);
+  }
+  const touched = new Set([date, ...Object.keys(byDate)]);
+  let out = null;
+  for (const d of touched) {
+    let day = (await getDay(project, d)) || freshDay(d);
+    if (byDate[d] && byDate[d].length) mergeClips(day, byDate[d], cfg);
+    if (d === date) { day.fetched_at = new Date().toISOString(); day.fetch_errors = errors; out = day; }
+    await putDay(project, day);
+  }
+  return out || ((await getDay(project, date)) || freshDay(date));
 }
 
 // One-off catch-up: fetch a wide window and bucket each relevant item into the
@@ -631,10 +642,10 @@ export async function runBackfill(project, fromDate) {
   const today = new Date().toISOString().slice(0, 10);
   const lookback = Math.min(45, Math.ceil((Date.now() - new Date(fromDate + 'T00:00:00Z').getTime()) / 864e5) + 1);
   const uniq = await gatherNews(cfg, lookback, errors);
-  // bucket by published date, within [fromDate, today]
+  // bucket by report day (10:45 SGT cutoff), within [fromDate, today]
   const byDate = {};
   for (const it of uniq) {
-    const d = (it.published || '').slice(0, 10);
+    const d = reportDay(it.published);
     if (!d || d < fromDate || d > today) continue;
     (byDate[d] = byDate[d] || []).push(it);
   }
@@ -766,6 +777,16 @@ async function tiktokSubs(v) {
   } catch { return ''; }
 }
 const when = (v) => { if (!v) return null; try { const d = typeof v === 'number' ? new Date(v * 1000) : new Date(v); return isNaN(d.getTime()) ? null : d; } catch { return null; } };
+// Report-day bucketing: the SPS reporting "day" closes at 10:45 SGT — anything
+// published after 10:45 belongs to the NEXT day's report (e.g. the 16 Jul report
+// covers 15 Jul 10:45 → 16 Jul 10:45). Equivalent to shifting the timestamp
+// forward by 24h − 10:45 = 13h15m SGT; SGT = UTC+8, so UTC + 21h15m, take date.
+// The clip's own `date` field keeps the REAL publish date (the team's clips log
+// shows e.g. "29 June" inside the 30 June report) — only the day PAGE shifts.
+const reportDay = (published) => {
+  const t = when(published); if (!t) return '';
+  return new Date(t.getTime() + (21 * 60 + 15) * 60000).toISOString().slice(0, 10);
+};
 
 async function sweepTiktok(handles, cutoff, limit, project) {
   // downloadSubtitlesOptions: DOWNLOAD_SUBTITLES pulls TikTok's OWN existing
@@ -1081,12 +1102,12 @@ export async function runSocialFetch(project, date) {
     }));
     if (i + OCR_BATCH < candidates.length) await new Promise((r) => setTimeout(r, 1500));  // throttle: stay under Gemini RPM
   }
-  // Bucket each post into the day it was PUBLISHED (not the sweep day), so a sweep
-  // distributes its window across the right days and never piles last week's posts
-  // onto today / duplicates the archive. Posts already stored dedupe by link.
+  // Bucket each post into its REPORT day (10:45 SGT cutoff — see reportDay), so a
+  // sweep distributes its window across the right report pages and never piles last
+  // week's posts onto today / duplicates the archive. Stored posts dedupe by link.
   const byDate = {};
   for (const it of results) {
-    const d = (it.published || '').slice(0, 10);
+    const d = reportDay(it.published);
     if (d) (byDate[d] = byDate[d] || []).push(it);
   }
   const touched = new Set([date, ...Object.keys(byDate)]);
