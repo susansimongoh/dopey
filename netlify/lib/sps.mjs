@@ -582,8 +582,11 @@ async function outletFeeds(cutoff, errors) {
         const dt = pd ? new Date(pd) : null;
         if (!title || !link || !dt || isNaN(dt) || dt < cutoff) continue;
         const im = it.match(/<enclosure[^>]*url="([^"]+)"/) || it.match(/<media:content[^>]*url="([^"]+)"/) || it.match(/<media:thumbnail[^>]*url="([^"]+)"/);
+        // RSS description (lede/summary, boilerplate-free) — transient, used by
+        // confirmByBody to verify SG-ness / find anchors without fetching the page.
+        const desc = (tag(it, 'description') || '').replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 600);
         out.push({ id: await sha1_12(link), src: f.name, kw: f.name, cat: 'daily_news',
-          title, link, pub: f.name, plat: '', published: dt.toISOString(),
+          title, link, pub: f.name, plat: '', published: dt.toISOString(), desc,
           eng: null, img: im ? decode(im[1]) : null, outlet: true, vern: !!f.vern, status: 'new' });
       }
     } catch (e) { errors.push(`${f.name}: ${String(e).slice(0, 50)}`); }
@@ -607,31 +610,79 @@ async function gatherNews(cfg, lookback, errors) {
   let results = (await Promise.all(tasks)).flat();
   const seenT = new Set(); const uniq = [];
   for (const it of results) { const k = it.title.toLowerCase().replace(/\W+/g, '').slice(0, 80); if (k && seenT.has(k)) continue; seenT.add(k); uniq.push(it); }
-  await confirmSgDatelines(uniq, cfg);
+  await confirmByBody(uniq, cfg);
   return uniq;
 }
 
-// SG mastheads open local stories with the classic dateline as the first words of
-// the first paragraph — "SINGAPORE: …" (CNA) / "SINGAPORE – …" (ST/BT) — while
-// foreign stories dateline their own city (KUALA LUMPUR:, JAKARTA:). Court headlines
-// often carry no locale word at all ("Woman jailed for money-mule romance scam"), so
-// a topic-matching English-outlet item that FAILS the headline locale check gets one
-// cheap article fetch: a SINGAPORE dateline in the body marks it localTrust
-// (SG-by-construction → gate passes on topic alone). Validated live: CNA + ST local
-// stories hit (`>SINGAPORE:` / `>SINGAPORE – ` in the article HTML), foreign don't.
-async function confirmSgDatelines(items, cfg) {
+// One capped article-fetch pass that rescues outlet stories whose SPS relevance is
+// split between headline and BODY. Three candidate classes, one fetch each:
+//   A `dateline`   (EN, topic-in-title, no locale-in-title): SG mastheads open local
+//     stories with a dateline — "SINGAPORE: …" (CNA) / "SINGAPORE – …" (ST/BT) —
+//     while foreign stories dateline their own city. Found → localTrust (persisted).
+//     Validated live 16 Jul: CNA + ST local hit, foreign clean; 4 rescues in prod.
+//   B `anchorbody` (EN, locale-in-title, NO topic/anchor in title): the SPS angle is
+//     a segment inside a bigger story (e.g. "Singapore Night Festival returns…" with
+//     the Yellow Ribbon Community Arts installation in para 6). Scan the body for
+//     ANCHORS only (precise, multiword — topics would be far too noisy in full HTML);
+//     matches are appended to `extra`, which the gate already reads → anchor-pass.
+//   C `vernlocale` (vernacular, topic-in-title, no locale-in-title): Malay/Chinese
+//     feature titles rarely write the country name — it's in the body ("Perkhidmatan
+//     Penjara Singapura"). Search the body for STRONG locale terms only (singapura/
+//     singapore/新加坡/狮城 — never short ones like 'sg', which every .sg page
+//     contains) and append the match to `extra` → the vern gate's locale check passes.
+// Priority A > C > B (proven value first) under one fetch cap.
+async function confirmByBody(items, cfg) {
   const lc = (a) => (a || []).filter(Boolean).map((s) => String(s).toLowerCase());
   const anchors = lc([...(cfg.anchors || []), ...((cfg.keywords || []).map((k) => k.q))]);
   const topics = lc(cfg.topics || cfg.topic_terms || []);
   const locale = lc(cfg.locale || []);
   if (!locale.length || !topics.length) return;   // non-localised project → gate doesn't need this
   const DATELINE = /[>"\n]\s*SINGAPORE\s*[:–—-]/;
-  const cand = items.filter((it) => it.outlet && !it.vern && it.link
-    && relevant(it.title, topics) && !relevant(it.title, [...anchors, ...locale])).slice(0, 15);
+  const STRONG_LOCALE = ['singapura', 'singapore', '新加坡', '狮城'];
+  const classify = (it) => {
+    if (!it.outlet || !it.link) return null;
+    const t = it.title || '';
+    if (relevant(t, anchors)) return null;                    // already self-passing
+    const hasTopic = relevant(t, topics), hasLocale = relevant(t, locale);
+    if (!it.vern && hasTopic && !hasLocale) return 'A';
+    if (it.vern && hasTopic && !hasLocale) return 'C';
+    if (!it.vern && !hasTopic && hasLocale) return 'B';
+    return null;
+  };
+  // Pass 1 — FREE: try the RSS description (lede, boilerplate-free) before any fetch.
+  //   A/C: a strong locale term in the lede confirms SG-ness (CNA descriptions even
+  //        open with the "SINGAPORE: " dateline). B: anchors may sit in the lede.
+  const descHit = (it, cls) => {
+    const dl = (it.desc || '').toLowerCase();
+    if (!dl) return false;
+    if (cls === 'B') {
+      const found = anchors.filter((a) => a.length >= 5 && relevant(dl, [a])).slice(0, 3);
+      if (found.length) { it.extra = ((it.extra || '') + ' [article mentions: ' + found.join(', ') + ']').trim().slice(0, 1000); return true; }
+      return false;
+    }
+    const found = STRONG_LOCALE.find((s) => dl.includes(s));
+    if (found) { if (cls === 'A') it.localTrust = true; else it.extra = ((it.extra || '') + ' [' + found + ']').trim().slice(0, 1000); return true; }
+    return false;
+  };
+  // Pass 2 — capped page fetches for what the description couldn't resolve, in
+  // proven-value order A (dateline) → C is NOT page-fetched (vernacular pages carry
+  // Singapura/新加坡 in nav/boilerplate — a body search would pass every foreign
+  // story; the description is the only trustworthy source) → B (anchor-in-body;
+  // anchors are ≥5-char precise phrases so page boilerplate can't fake them).
+  const rank = { A: 0, B: 1 };
+  const cand = items.map((it) => ({ it, cls: classify(it) }))
+    .filter((x) => x.cls && !descHit(x.it, x.cls))
+    .filter((x) => x.cls !== 'C')
+    .sort((a, b) => rank[a.cls] - rank[b.cls]).slice(0, 18);
   for (let i = 0; i < cand.length; i += 5) {
-    await Promise.all(cand.slice(i, i + 5).map(async (it) => {
-      try { if (DATELINE.test(await httpText(it.link, 9000))) it.localTrust = true; }
-      catch { /* best-effort — item just stays gated on its headline */ }
+    await Promise.all(cand.slice(i, i + 5).map(async ({ it, cls }) => {
+      try {
+        const html = await httpText(it.link, 9000);
+        if (cls === 'A') { if (DATELINE.test(html)) it.localTrust = true; return; }
+        const low = html.toLowerCase();   // B: anchor scan
+        const found = anchors.filter((a) => a.length >= 5 && relevant(low, [a])).slice(0, 3);
+        if (found.length) it.extra = ((it.extra || '') + ' [article mentions: ' + found.join(', ') + ']').trim().slice(0, 1000);
+      } catch { /* best-effort — item just stays gated on its headline */ }
     }));
   }
 }
