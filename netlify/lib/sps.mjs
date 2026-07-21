@@ -323,7 +323,7 @@ const isSgVernOutlet = (pub) => { const p = (pub || '').toLowerCase(); return SG
 const EN_OUTLETS = [
   'channel newsasia', 'channelnewsasia', 'cna', 'straits times', 'straitstimes', 'stcom',
   'todayonline', 'today', 'business times', 'businesstimes', 'biztimes',
-  'mothership', 'asiaone',
+  'mothership', 'asiaone', 'her world', 'herworld',
 ];
 // True when a source name is any SG news outlet (English or vernacular).
 const isNewsOutlet = (pub) => { const p = (pub || '').toLowerCase(); return EN_OUTLETS.some((o) => p.includes(o)) || isSgVernOutlet(pub); };
@@ -560,6 +560,9 @@ const OUTLET_FEEDS = [
   { name: 'Mothership', url: 'https://mothership.sg/feed/' },
   { name: 'Must Share News', url: 'https://mustsharenews.com/feed/' },
   { name: 'Rice Media', url: 'https://www.ricemedia.co/feed/' },
+  // Lifestyle title that regularly features Yellow Ribbon events (YRCAF at the
+  // Night Festival, YR Run listings) — the beat the YRSG report draws on.
+  { name: 'Her World', url: 'https://www.herworld.com/feed' },
   { name: 'Berita Harian', url: 'https://www.beritaharian.sg/rss.xml' },
   // Mediacorp vernacular desks (Chinese / Malay) — the SPS daily report draws
   // most of its court/sentencing items from these. Same Drupal RSS endpoint as
@@ -647,6 +650,11 @@ async function confirmByBody(items, cfg) {
     if (!it.vern && hasTopic && !hasLocale) return 'A';
     if (it.vern && hasTopic && !hasLocale) return 'C';
     if (!it.vern && !hasTopic && hasLocale) return 'B';
+    // D: ST's courts-crime section — an SG court story BY CONSTRUCTION even when the
+    // headline has zero signals ("Remaining charges against Hin Leong founder O.K.
+    // Lim withdrawn"). Fetch the body and look for topics; found → topic appended to
+    // extra + localTrust (the URL section is the locale proof).
+    if (!it.vern && !hasTopic && !hasLocale && /\/courts-crime\//.test(it.link)) return 'D';
     return null;
   };
   // Pass 1 — FREE: try the RSS description (lede, boilerplate-free) before any fetch.
@@ -660,6 +668,11 @@ async function confirmByBody(items, cfg) {
       if (found.length) { it.extra = ((it.extra || '') + ' [article mentions: ' + found.join(', ') + ']').trim().slice(0, 1000); return true; }
       return false;
     }
+    if (cls === 'D') {   // needs a TOPIC (the courts-crime URL already proves locale)
+      const found = topics.filter((t) => t.length >= 6 && relevant(dl, [t])).slice(0, 3);
+      if (found.length) { it.localTrust = true; it.extra = ((it.extra || '') + ' [article mentions: ' + found.join(', ') + ']').trim().slice(0, 1000); return true; }
+      return false;
+    }
     const found = STRONG_LOCALE.find((s) => dl.includes(s));
     if (found) { if (cls === 'A') it.localTrust = true; else it.extra = ((it.extra || '') + ' [' + found + ']').trim().slice(0, 1000); return true; }
     return false;
@@ -669,7 +682,7 @@ async function confirmByBody(items, cfg) {
   // Singapura/新加坡 in nav/boilerplate — a body search would pass every foreign
   // story; the description is the only trustworthy source) → B (anchor-in-body;
   // anchors are ≥5-char precise phrases so page boilerplate can't fake them).
-  const rank = { A: 0, B: 1 };
+  const rank = { A: 0, D: 1, B: 2 };
   const cand = items.map((it) => ({ it, cls: classify(it) }))
     .filter((x) => x.cls && !descHit(x.it, x.cls))
     .filter((x) => x.cls !== 'C')
@@ -679,7 +692,15 @@ async function confirmByBody(items, cfg) {
       try {
         const html = await httpText(it.link, 9000);
         if (cls === 'A') { if (DATELINE.test(html)) it.localTrust = true; return; }
-        const low = html.toLowerCase();   // B: anchor scan
+        const low = html.toLowerCase();
+        if (cls === 'D') {
+          // topics ≥6 chars only (word-boundary) — short ones like 'jail' would hit
+          // sidebar/related-story links too easily. Section URL supplies the locale.
+          const found = topics.filter((t) => t.length >= 6 && relevant(low, [t])).slice(0, 3);
+          if (found.length) { it.localTrust = true; it.extra = ((it.extra || '') + ' [article mentions: ' + found.join(', ') + ']').trim().slice(0, 1000); }
+          return;
+        }
+        // B: anchor scan
         const found = anchors.filter((a) => a.length >= 5 && relevant(low, [a])).slice(0, 3);
         if (found.length) it.extra = ((it.extra || '') + ' [article mentions: ' + found.join(', ') + ']').trim().slice(0, 1000);
       } catch { /* best-effort — item just stays gated on its headline */ }
