@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Dopey daily health check — weekdays 10:15 (mini local time; assumes SGT).
+       Invokes node DIRECTLY (not via zsh) per the sg.tmg.* convention: shells under
+       launchd hit macOS TCC restrictions. Edit the two __PLACEHOLDER__ paths:
+         __NODE__  → output of `which node`   (e.g. /opt/homebrew/bin/node)
+         __REPO__  → repo path OUTSIDE ~/Documents (e.g. /Users/<you>/Projects/Dopey) -->
+  <key>Label</key><string>sg.tmg.dopey-health</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>__REPO__/ops/mini/dopey-health-check.mjs</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>15</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>/tmp/dopey-health.log</string>
+  <key>StandardErrorPath</key><string>/tmp/dopey-health.log</string>
+  <key>RunAtLoad</key><false/>
+</dict>
+</plist>
