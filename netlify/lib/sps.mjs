@@ -314,6 +314,7 @@ const SG_VERN_OUTLETS = [
   'berita mediacorp', 'beritamediacorp', 'beritaharian', 'berita harian', 'bharian',
   '8world', '8视界', '8 world', 'shin min', '新明日报', '新明', 'zaobao', '联合早报',
   'lianhe zaobao', 'tabla', 'tamil murasu', 'tamilmurasu',
+  'capital 958', 'capital958', 'oli 968', 'oli968',   // Mediacorp Chinese / Tamil radio
 ];
 const isSgVernOutlet = (pub) => { const p = (pub || '').toLowerCase(); return SG_VERN_OUTLETS.some((o) => p.includes(o)); };
 // English SG news mastheads. Their social posts must be gated like NEWS (topic +
@@ -323,7 +324,7 @@ const isSgVernOutlet = (pub) => { const p = (pub || '').toLowerCase(); return SG
 const EN_OUTLETS = [
   'channel newsasia', 'channelnewsasia', 'cna', 'straits times', 'straitstimes', 'stcom',
   'todayonline', 'today', 'business times', 'businesstimes', 'biztimes',
-  'mothership', 'asiaone', 'her world', 'herworld',
+  'mothership', 'asiaone', 'her world', 'herworld', 'mediacorp', '8days',
 ];
 // True when a source name is any SG news outlet (English or vernacular).
 const isNewsOutlet = (pub) => { const p = (pub || '').toLowerCase(); return EN_OUTLETS.some((o) => p.includes(o)) || isSgVernOutlet(pub); };
@@ -409,10 +410,19 @@ export function mergeClips(day, results, cfg) {
   day.dismissed = day.dismissed || [];
   const have = new Set(day.clips.map((c) => c.id));
   const haveLinks = new Set(day.clips.map((c) => c.link).filter(Boolean));
+  // Content-level dedup: the FB scraper returns a DIFFERENT URL variant for the
+  // same post across sweeps (/posts/pfbid…, /permalink.php?…, /share/p/…), so
+  // id/link dedup alone let the same post clip 3-7×. Same publisher + same
+  // normalised caption prefix on the same day-page = the same post. (Cross-
+  // platform copies keep distinct pubs, so they still clip separately.)
+  const contentKey = (pub, t) => String(pub || '').toLowerCase().replace(/\W+/g, '') + '|' + String(t || '').toLowerCase().replace(/\W+/g, '').slice(0, 80);
+  const haveContent = new Set(day.clips.map((c) => contentKey(c.pub, c.subject)));
   const gone = new Set(day.dismissed);
   for (const it of results) {
     if (have.has(it.id) || gone.has(it.id)) continue;
     if (it.link && haveLinks.has(it.link)) continue;          // same URL = true duplicate
+    const ck = contentKey(it.pub, it.title);
+    if (haveContent.has(ck)) continue;                        // same post, different URL variant
     // Social posts come ONLY from configured accounts (we scrape the watchlist
     // handles), so they're on-watchlist by construction — skip the keyword
     // membership check (FB/X return display names, not the config slug, so an
@@ -423,7 +433,7 @@ export function mergeClips(day, results, cfg) {
     // own activity); everyone else (other accounts + news) must be SPS-relevant
     // — checked against caption PLUS any OCR/subtitle text read from the media.
     if (!ownPost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''), it.pub, skipLocaleFor(it), vernFor(it))) continue;
-    have.add(it.id); if (it.link) haveLinks.add(it.link);
+    have.add(it.id); if (it.link) haveLinks.add(it.link); haveContent.add(ck);
     day.clips.push(itemToClip(it));
   }
   day.clips.sort((a, b) => (b.published || b.date || '').localeCompare(a.published || a.date || ''));
