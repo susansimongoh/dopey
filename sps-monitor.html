@@ -518,6 +518,7 @@ body.role-admin #u-role option[value="tmg_admin"] { } /* placeholder */
 }
 @media print { body * { visibility: hidden; } }
 </style>
+<script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 </head>
 <body class="role-client">
 
@@ -836,18 +837,22 @@ body.role-admin #u-role option[value="tmg_admin"] { } /* placeholder */
 <!-- ═══ REPORT MODAL ═══ -->
 <div class="overlay hidden" id="report-modal">
   <div class="modal modal-lg">
-    <h3>Export report PDF</h3>
+    <h3>Export report</h3>
     <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px">
-      The PDF lays out every section (News Highlights → Issues, Daily News, Yellow Ribbon News, CARE Network, Social Media Updates, FYI News) with this day's stories, then the clips log with screenshots.
+      Exports every section with this day's stories. <b>DOCX</b> matches the team's MM Summaries format (letterhead, section bars, annex links). For a weekend/multi-day report, set a range end date — stories from all days in the range are merged.
     </p>
     <div class="f-row">
-      <div><label class="f-label">Report number</label><input class="f-input" id="cfg-num" placeholder="e.g. 101/2026"></div>
+      <div><label class="f-label">Report number</label><input class="f-input" id="cfg-num" placeholder="e.g. 160/2026"></div>
       <div><label class="f-label">Date / range heading</label><input class="f-input" id="cfg-date" placeholder="Friday, 13 June 2026"></div>
+    </div>
+    <div class="f-row" style="margin-top:8px">
+      <div><label class="f-label">Range end date (optional, for multi-day reports)</label><input class="f-input" id="cfg-range-end" type="date"></div>
     </div>
     <div class="m-foot">
       <button class="btn btn-ghost" onclick="closeModal('report-modal')">Cancel</button>
       <button class="btn" onclick="saveReportCfg(); copyReport()">Copy as text</button>
-      <button class="btn btn-ink" onclick="saveReportCfg(); printReport()">🖨 Download PDF</button>
+      <button class="btn" onclick="saveReportCfg(); printReport()">🖨 PDF</button>
+      <button class="btn btn-ink" onclick="saveReportCfg(); exportDocx()">📄 Export DOCX</button>
     </div>
   </div>
 </div>
@@ -885,8 +890,8 @@ const DEF_SECTIONS = [
   { label: 'FYI News', cat: 'fyi' },
 ];
 // Build the day's report layout from the project's section config (data-driven).
-function sectionSpec() {
-  const all = S.day.stories || [];
+function sectionSpec() { return sectionSpecFor(S.day.stories || []); }
+function sectionSpecFor(all) {
   const specs = (S.cfg && S.cfg.sections && S.cfg.sections.length) ? S.cfg.sections : DEF_SECTIONS;
   const pick = (sub) => all.filter(s => s.cat === sub.cat && (sub.subOrg ? s.subOrg === sub.subOrg : true));
   return specs.map(sec => sec.head
@@ -894,6 +899,19 @@ function sectionSpec() {
     : { label: sec.label, stories: pick(sec) });
 }
 const TR_LABEL = { very_high: 'very high', high: 'high', moderate: 'moderate', low: 'low', very_low: 'very low' };
+// Interaction tier per clip from real engagement (MM-Guide thresholds; mirror of server traction())
+function tractionTier(c) {
+  const eng = c.eng || {}; const plat = c.plat || '';
+  const plays = eng.plays || 0, cc = (eng.likes || 0) + (eng.comments || 0) + (eng.shares || 0);
+  if (plat === 'TikTok' || plat === 'YouTube') {
+    if (plays >= 4e5 || cc >= 14000) return 'very_high';
+    if (plays >= 1e5 || cc >= 3000) return 'high';
+    if (plays >= 4e4 || cc >= 850) return 'moderate';
+    if (plays >= 2e4 || cc >= 350) return 'low';
+    return 'very_low';
+  }
+  if (cc > 300) return 'high'; if (cc >= 100) return 'moderate'; return 'low';
+}
 
 const S = {
   project: null,         // active project id (e.g. 'sps', 'tote')
@@ -1582,7 +1600,8 @@ async function generateStories(silent) {
   const isDraft = s => s.llm === false || (s.llm === undefined && norm(s.hl) === norm(s.summary));
   const prevReal = S.day.stories.filter(s => s.auto && !s.edited && !isDraft(s));
 
-  const pool = clips.filter(c => !keptIds.has(c.id));
+  // PM approval gate: pending social clips never feed stories (mirror of rebuildStories)
+  const pool = clips.filter(c => !keptIds.has(c.id) && !(c.plat && c.approval === 'pending'));
   const clusters = clusterClips(pool);
 
   const matchPrev = group => {
@@ -1634,10 +1653,16 @@ async function generateStories(silent) {
     else if (group.some(c => isCarePartner(c.kw) || isCarePartner(c.pub))) { cat = 'care_network'; }
     else { cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : 'daily_news'; if (cat === 'social_updates') cat = 'daily_news'; }
 
+    // auto traction tiers (MM-Guide thresholds; editable) + Gemini comment sentiment
+    // when the approved clip has been enriched — mirror of rebuildStories.
+    const RANK = ['very_low', 'low', 'moderate', 'high', 'very_high'];
+    const soc = group.filter(c => c.plat && c.eng);
+    const trInt = soc.length ? RANK[Math.max(...soc.map(c => Math.max(0, RANK.indexOf(tractionTier(c)))))] : '';
+    const maxCom = soc.length ? Math.max(...soc.map(c => (c.eng && c.eng.comments) || 0)) : 0;
+    const trCom = soc.length ? (maxCom > 300 ? 'high' : maxCom >= 100 ? 'moderate' : 'low') : '';
     built.push({ id: 's' + Date.now().toString(36) + made, clipIds, cat, subOrg, hl,
       summary, reported, syndicated: '', published, llm,
-      // traction left blank — fill it in manually via Edit (tier + comment observations)
-      trInt: '', trCom: '', trNote: '', auto: true });
+      trInt, trCom, trNote: group.map(c => c.sentiment).find(Boolean) || '', auto: true });
     made++;
   });
 
@@ -1676,15 +1701,40 @@ function renderClips() {
         ${c.shot ? `<img src="${esc(shotSrc(c))}" referrerpolicy="no-referrer" onerror="this.parentNode.innerHTML='<span class=ph>📷</span>'">` : '<span class="ph">📷</span>'}
       </div>
       <div class="clip-body">
-        <div class="clip-pub">${esc(c.pub)} ${c.plat ? `<span class="plat-pill">${esc(c.plat)}</span>` : ''} <span class="cat-tag cat-${esc(c.cat)}">${(CATS[c.cat] || c.cat).split(' &')[0].split(' and ')[0]}</span> <span class="clip-date" style="width:auto">${esc(c.date)}</span></div>
+        <div class="clip-pub">${esc(c.pub)} ${c.plat ? `<span class="plat-pill">${esc(c.plat)}</span>` : ''} <span class="cat-tag cat-${esc(c.cat)}">${(CATS[c.cat] || c.cat).split(' &')[0].split(' and ')[0]}</span> <span class="clip-date" style="width:auto">${esc(c.date)}</span>
+          ${c.approval === 'pending' ? '<span style="background:#b7791f;color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:9px;margin-left:4px">PENDING APPROVAL</span>' : ''}
+          ${c.approval === 'approved' ? `<span style="background:#276749;color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:9px;margin-left:4px">APPROVED${c.plat && !c.sentiment ? ' · sentiment…' : ''}</span>` : ''}</div>
       <div class="clip-subj">${c.link ? `<a href="${esc(c.link)}" target="_blank" rel="noopener">${esc(c.subject)}</a>` : esc(c.subject)}</div>
+      ${c.sentiment ? `<div style="font-size:11px;color:#556;margin-top:3px">💬 ${esc(c.sentiment)}</div>` : ''}
       </div>
       ${S.editor ? `<div class="ib-actions">
-        <button class="btn btn-sm" onclick="storyFromClip('${esc(c.id)}')">→ Story</button>
+        ${c.approval === 'pending' ? `<button class="btn btn-sm" style="background:#276749;color:#fff" onclick="approveClip('${esc(c.id)}','approve')">✓ Approve</button>
+        <button class="btn btn-sm btn-ghost" style="color:#c0392b" onclick="approveClip('${esc(c.id)}','reject')">✗ Reject</button>` : `<button class="btn btn-sm" onclick="storyFromClip('${esc(c.id)}')">→ Story</button>`}
         <button class="btn btn-sm btn-ghost" onclick="editClip('${esc(c.id)}')">Edit</button>
         <button class="btn btn-sm btn-ghost" style="color:#c0392b" onclick="delClip('${esc(c.id)}')">Delete</button>
       </div>` : ''}
     </div>`).join('');
+}
+
+/* ── PM approval ── */
+async function approveClip(id, action) {
+  const c = (S.day.clips || []).find(x => x.id === id);
+  if (!c) return;
+  if (action === 'reject' && !confirm('Reject this clip? It will be removed and won\'t return on re-sweeps.')) return;
+  try {
+    const r = await api('/api/approve', { date: S.date, project: S.project, clipId: id, action });
+    if (!r.ok) { toast('Approval failed: ' + (r.error || '?')); return; }
+    if (action === 'reject') {
+      S.day.clips = S.day.clips.filter(x => x.id !== id);
+      S.day.dismissed = [...(S.day.dismissed || []), id];
+      S.day.stories = (S.day.stories || []).filter(s => !(s.auto && (s.clipIds || []).length === 1 && s.clipIds[0] === id));
+    } else {
+      c.approval = 'approved';
+      toast(c.plat ? 'Approved — fetching comments & sentiment in the background.' : 'Approved.');
+    }
+    renderClips(); renderStories(); badges();
+    if (action === 'approve') generateStories(true);   // approved clip can now join stories
+  } catch (e) { toast('Approval failed: ' + e.message); }
 }
 
 /* ── hero shots ── */
@@ -1910,8 +1960,12 @@ function delStory(id) {
 
 /* ════════════════════ REPORT ════════════════════ */
 function fillCfgInputs() {
-  el('cfg-num').value = S.day.cfg.num || '';
+  // auto-suggest the next report number from the last exported one
+  let suggest = '';
+  try { const last = parseInt(localStorage.getItem('sps-last-report-num') || '', 10); if (last) suggest = (last + 1) + '/' + S.date.slice(0, 4); } catch { /* no suggestion */ }
+  el('cfg-num').value = S.day.cfg.num || suggest;
   el('cfg-date').value = S.day.cfg.date || prettyDate(S.date);
+  el('cfg-range-end').value = '';
 }
 
 function storyBlockHtml(s, i) {
@@ -1948,6 +2002,102 @@ function reportHtml() {
     h += `</div>`;
   });
   return h;
+}
+
+/* ── DOCX export (team MM-Summaries format) ── */
+// Multi-day range: gather this page's day plus every day up to cfg-range-end (max 7).
+async function gatherRangeDays() {
+  const end = (el('cfg-range-end').value || '').trim();
+  if (!end || end <= S.date) return [S.day];
+  const days = [];
+  let cur = new Date(S.date + 'T00:00:00Z'); const stop = new Date(end + 'T00:00:00Z');
+  let n = 0;
+  while (cur <= stop && n++ < 7) {
+    const dt = cur.toISOString().slice(0, 10);
+    if (dt === S.date) days.push(S.day);
+    else {
+      try { const d = await api(`/api/day/${dt}`); if (d && d.clips) days.push(d); } catch { /* skip missing day */ }
+    }
+    cur = new Date(cur.getTime() + 864e5);
+  }
+  return days.length ? days : [S.day];
+}
+
+async function exportDocx() {
+  const D = window.docx;
+  if (!D) { toast('DOCX library failed to load — check connection and reload.'); return; }
+  toast('Building DOCX…');
+  const days = await gatherRangeDays();
+  const stories = days.flatMap(d => d.stories || []);
+  const clips = days.flatMap(d => d.clips || []);
+  const spec = sectionSpecFor(stories);
+  const [headImg, footImg] = await Promise.all(['/report-assets/sps-letterhead.png', '/report-assets/sps-footer.png']
+    .map(u => fetch(u).then(r => r.ok ? r.arrayBuffer() : null).catch(() => null)));
+  const P = D.Paragraph, T = D.TextRun;
+  const ch = [];
+  if (headImg) ch.push(new P({ children: [new D.ImageRun({ data: headImg, transformation: { width: 620, height: 160 } })] }));
+  ch.push(new P({ alignment: D.AlignmentType.RIGHT, children: [new T({ text: el('cfg-num').value.trim() || '___/2026', bold: true, size: 20 })] }));
+  ch.push(new P({ alignment: D.AlignmentType.CENTER, spacing: { after: 240 },
+    children: [new T({ text: 'MEDIA MONITORING REPORT – ' + (el('cfg-date').value.trim() || prettyDate(S.date)).toUpperCase(), bold: true, size: 26, color: '16263D' })] }));
+  const bar = (t, fill, color) => new P({ shading: { type: D.ShadingType.CLEAR, fill: fill || '16263D' },
+    spacing: { before: 200, after: 120 }, children: [new T({ text: ' ' + t, bold: true, color: color || 'FFFFFF', size: 22 })] });
+  const clipById = Object.fromEntries(clips.map(c => [c.id, c]));
+  const annex = [];
+  const storyPs = (s, i) => {
+    const ps = [new P({ spacing: { before: 140, after: 60 }, children: [new T({ text: `${i + 1}. ${s.hl}`, bold: true, size: 22 })] })];
+    String(s.summary || '').split(/\n+/).filter(Boolean).forEach(par =>
+      ps.push(new P({ spacing: { after: 80 }, alignment: D.AlignmentType.JUSTIFIED, children: [new T({ text: par, size: 22 })] })));
+    const bullet = (label, txt) => new P({ bullet: { level: 0 },
+      children: [new T({ text: label + ': ', bold: true, size: 21 }), new T({ text: txt, size: 21 })] });
+    if (s.reported) ps.push(bullet('Reported by', s.reported));
+    if (s.syndicated) ps.push(bullet('Syndicated by', s.syndicated));
+    if (s.published) ps.push(bullet('Published on', s.published));
+    const tr = tractionLine(s);
+    if (tr) ps.push(new P({ bullet: { level: 0 }, children: [new T({ text: tr, size: 21 })] }));
+    const links = uniq((s.clipIds || []).map(id => clipById[id]).filter(c => c && c.link).map(c => c.link));
+    if (links.length) annex.push({ n: annex.length + 1, hl: s.hl, links });
+    return ps;
+  };
+  spec.forEach(sec => {
+    if (sec.head) {
+      ch.push(bar(sec.head));
+      sec.subs.forEach(sub => {
+        ch.push(new P({ spacing: { before: 80 }, children: [new T({ text: sub.label, bold: true, italics: true, size: 21 })] }));
+        if (!sub.stories.length) ch.push(new P({ children: [new T({ text: 'XXX', bold: true, size: 21 })] }));
+        sub.stories.forEach((s, j) => ch.push(...storyPs(s, j)));
+      });
+    } else {
+      const isIssues = /issues/i.test(sec.label), isFyi = /fyi/i.test(sec.label);
+      ch.push(isIssues
+        ? new P({ spacing: { before: 200, after: 120 }, children: [new T({ text: sec.label, bold: true, color: 'C0392B', size: 22 })] })
+        : bar(sec.label, isFyi ? '808080' : '16263D'));
+      if (!sec.stories.length) ch.push(new P({ children: [new T({ text: 'XXX', bold: true, size: 21 })] }));
+      sec.stories.forEach((s, j) => ch.push(...storyPs(s, j)));
+    }
+  });
+  ch.push(new P({ spacing: { before: 320 }, alignment: D.AlignmentType.CENTER,
+    children: [new T({ text: 'Interested in having your initiative featured in the media?', bold: true, color: '0F4AA8', size: 21 })] }));
+  ch.push(new P({ alignment: D.AlignmentType.CENTER,
+    children: [new T({ text: 'Drop us an email at pris-corporate-comms@pris.gov.sg ☺', bold: true, color: '0F4AA8', size: 21 })] }));
+  if (footImg) ch.push(new P({ spacing: { before: 200 }, children: [new D.ImageRun({ data: footImg, transformation: { width: 620, height: 115 } })] }));
+  ch.push(new P({ spacing: { before: 120 }, children: [new T({ text: 'WARNING: "Privileged/Confidential information may be contained in this message. If you are not the intended addressee, you must not copy, distribute or take any action in reliance thereon. Communication of any information in this email to any unauthorised person is an offence under the Official Secrets Act 1935. Please notify the sender immediately if you receive this in error."', size: 16, color: '555555' })] }));
+  if (annex.length) {
+    ch.push(new P({ pageBreakBefore: true, children: [new T({ text: '' })] }));
+    annex.forEach(a => {
+      ch.push(new P({ spacing: { before: 140 }, children: [new T({ text: `#${a.n} ${a.hl.slice(0, 70)}`, bold: true, size: 20 })] }));
+      a.links.forEach(l => ch.push(new P({ children: [new D.ExternalHyperlink({ link: l, children: [new T({ text: l, style: 'Hyperlink', size: 19 })] })] })));
+    });
+  }
+  const doc = new D.Document({ sections: [{ properties: {}, children: ch }] });
+  const blob = await D.Packer.toBlob(doc);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const num = (el('cfg-num').value.trim().split('/')[0] || 'report');
+  a.download = `${num} - SPS MM Summaries - ${(el('cfg-date').value.trim() || S.date).replace(/[\\/:*?"<>|]/g, '')}.docx`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  try { const n = parseInt(num, 10); if (n) localStorage.setItem('sps-last-report-num', String(n)); } catch { /* best-effort */ }
+  toast('DOCX exported.');
 }
 
 // Combined export: the stories report, then the clips log, in one PDF.

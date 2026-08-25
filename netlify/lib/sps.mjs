@@ -192,7 +192,9 @@ export async function rebuildStories(day, cfg) {
   const norm = (t) => String(t || '').replace(/[^a-z0-9]/gi, '').slice(0, 40);
   const isDraft = (s) => s.llm === false || (s.llm === undefined && norm(s.hl) === norm(s.summary));
   const prevReal = day.stories.filter((s) => s.auto && !s.edited && !isDraft(s));
-  const pool = clips.filter((c) => !keptIds.has(c.id));
+  // PM approval gate: PENDING social clips never feed stories/reports — only
+  // approved social clips and news clips do. (Rejected clips are removed outright.)
+  const pool = clips.filter((c) => !keptIds.has(c.id) && !(c.plat && c.approval === 'pending'));
   const clusters = _cluster(pool);
   const matchPrev = (g) => { const ids = new Set(g.map((c) => c.id)); return prevReal.find((s) => (s.clipIds || []).some((id) => ids.has(id))); };
   const fresh = clusters.filter((g) => !matchPrev(g));
@@ -226,7 +228,18 @@ export async function rebuildStories(day, cfg) {
     if (org) { cat = 'social_updates'; subOrg = org; }
     else if (group.some((c) => isCarePartner(cfg, c.kw) || isCarePartner(cfg, c.pub))) { cat = 'care_network'; }
     else { cat = (sum && CAT_KEYS.includes(sum.category)) ? sum.category : 'daily_news'; if (cat === 'social_updates') cat = 'daily_news'; }
-    built.push({ id: 's' + Date.now().toString(36) + made, clipIds, cat, subOrg, hl, summary, reported, syndicated: '', published, llm, trInt: '', trCom: '', trNote: '', auto: true });
+    // Auto traction tiers for the report's "To date, traction is X for interactions
+    // and Y for comments" line (MM-Guide thresholds; editable per story). Interactions
+    // tier = best clip tier via traction(); comments tier from raw comment counts
+    // (>300 high / 100-300 moderate / <100 low). trNote carries the Gemini comment-
+    // sentiment sentence once comments are enriched on approval.
+    const RANK = ['very_low', 'low', 'moderate', 'high', 'very_high'];
+    const soc = group.filter((c) => c.plat && c.eng);
+    const trInt = soc.length ? RANK[Math.max(...soc.map((c) => Math.max(0, RANK.indexOf(traction(c.plat, c.eng)))))] : '';
+    const maxCom = soc.length ? Math.max(...soc.map((c) => (c.eng && c.eng.comments) || 0)) : 0;
+    const trCom = soc.length ? (maxCom > 300 ? 'high' : maxCom >= 100 ? 'moderate' : 'low') : '';
+    const sent = group.map((c) => c.sentiment).find(Boolean) || '';
+    built.push({ id: 's' + Date.now().toString(36) + made, clipIds, cat, subOrg, hl, summary, reported, syndicated: '', published, llm, trInt, trCom, trNote: sent, auto: true });
     made++;
   });
   day.stories = [...kept, ...built];
@@ -382,6 +395,10 @@ function itemToClip(it) {
     ...(it.discovered ? { discovered: true } : {}),  // found via keyword search, not account sweep
     ...(it.localTrust ? { localTrust: true } : {}),  // SG-confirmed (dateline / SG-scoped query) — survives re-prune
     ...(it.audioUrl ? { audioUrl: it.audioUrl } : {}),  // transient: reel audio for post-gate Gemini transcription (stripped after)
+    // PM approval gate: social clips arrive PENDING and only feed stories/reports
+    // (and comment scraping) once approved via /api/approve. News clips need none.
+    ...(SOCIAL_PLATS.has(it.plat || '') ? { approval: 'pending' } : {}),
+    ...(it.cmts && it.cmts.length ? { cmts: it.cmts } : {}),   // top comments (FB: free at sweep time)
   };
 }
 
@@ -870,6 +887,68 @@ async function imageText(imgUrl, diag, project) {
   return '';
 }
 
+// ── comment scraping + sentiment (runs ONLY for PM-approved social clips) ──
+// FB comments arrive free with the sweep (topComments → clip.cmts). TikTok and
+// Instagram are fetched on-demand here — one small actor run per approved clip,
+// so we never pay for comments on clips that won't be reported. X is skipped
+// (rarely reported with sentiment; negligible volume).
+async function fetchPostComments(clip, project) {
+  const link = clip.link || '';
+  try {
+    if (clip.plat === 'TikTok') {
+      const items = await apifyRun('clockworks~tiktok-comments-scraper', { postURLs: [link], commentsPerPost: 20 }, 240000, project);
+      return items.map((c) => String(c.text || '').trim().slice(0, 160)).filter(Boolean).slice(0, 20);
+    }
+    if (clip.plat === 'Instagram') {
+      const items = await apifyRun('apify~instagram-comments-scraper', { directUrls: [link], resultsLimit: 20 }, 240000, project);
+      return items.map((c) => String(c.text || '').trim().slice(0, 160)).filter(Boolean).slice(0, 20);
+    }
+  } catch { /* best-effort — sentiment falls back to "no relevant comments" */ }
+  return [];
+}
+
+// One-sentence comment-sentiment line in the report house style.
+async function sentimentLine(comments, project) {
+  if (!comments || !comments.length) return 'No relevant comments were observed.';
+  const key = GEMINI_KEY(project);
+  if (!key) return '';
+  const prompt = `You are writing ONE line of a media monitoring report. Given these public comments on a social media post, write 1-2 sentences in this exact house style, past tense, neutral:
+- If comments are irrelevant/emoji/tags only: exactly "No relevant comments were observed."
+- If broadly one-sided: "Most comments expressed <sentiment/theme>."
+- If mixed: "Sentiment was mixed, with some commenters <view A>, while others <view B>."
+Do not quote usernames. Comments:
+${comments.slice(0, 20).map((c) => '- ' + c).join('\n')}`;
+  const body = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2 } };
+  for (const model of GEMINI_MODELS) {
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+      if (r.ok) {
+        const d = await r.json();
+        return ((d?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '').trim().slice(0, 400);
+      }
+      if (r.status === 404) continue;
+      if (![429, 500, 503].includes(r.status)) break;
+    } catch { break; }
+  }
+  return '';
+}
+
+// Background enrichment for one approved clip: fetch comments if needed, write the
+// sentiment line onto the clip, and mirror it into any story that carries the clip.
+export async function enrichClipComments(project, date, clipId) {
+  const day = await getDay(project, date);
+  if (!day) return;
+  const c = (day.clips || []).find((x) => x.id === clipId);
+  if (!c || c.approval !== 'approved') return;
+  if (!c.cmts || !c.cmts.length) c.cmts = await fetchPostComments(c, project);
+  c.sentiment = await sentimentLine(c.cmts, project);
+  for (const s of (day.stories || [])) {
+    if ((s.clipIds || []).includes(clipId) && !s.trNote) s.trNote = c.sentiment;
+  }
+  await putDay(project, day);
+}
+
 // TikTok auto-subtitles (spoken words) from the actor's subtitleLinks → plain text.
 async function tiktokSubs(v) {
   try {
@@ -997,9 +1076,15 @@ async function sweepFacebook(handles, cutoff, limit, project) {
     let img = null;
     if (Array.isArray(p.media) && p.media[0]) img = (p.media[0].photo_image && p.media[0].photo_image.uri) || p.media[0].thumbnail || null;
     const tx = p.captionText || p.transcript || p.videoTranscript || p.video_transcript || '';
-    out.push(await socialItem('Facebook', h, p.text, link, dt,
+    const it = await socialItem('Facebook', h, p.text, link, dt,
       { plays: 0, likes: p.likes || 0, comments: p.comments || 0, shares: p.shares || 0 }, img,
-      typeof tx === 'string' ? tx : ''));
+      typeof tx === 'string' ? tx : '');
+    // FB returns top comments for free in the sweep — keep a capped sample for the
+    // report's comment-sentiment line (generated only after PM approval).
+    if (Array.isArray(p.topComments) && p.topComments.length) {
+      it.cmts = p.topComments.map((c) => String((c && c.text) || '').trim().slice(0, 160)).filter(Boolean).slice(0, 12);
+    }
+    out.push(it);
   }
   return out;
 }

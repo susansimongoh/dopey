@@ -148,6 +148,32 @@ export default async (req) => {
       const stories = (updated.stories || []);
       return json({ ok: true, date, pruned, clips: (updated.clips || []).length, stories: stories.length, fallbacks: stories.filter((s) => s.llm === false).length });
     }
+    if (req.method === 'POST' && path === '/api/approve') {
+      // PM approval gate for social clips. approve → clip becomes reportable and
+      // (TikTok/IG/FB) gets comment-sentiment enrichment in the background.
+      // reject → clip is removed and its id remembered in dismissed so re-sweeps
+      // can't resurrect it.
+      const { date, project, clipId, action } = await req.json();
+      if (!date || !clipId || !['approve', 'reject'].includes(action)) return json({ ok: false, error: 'date, clipId, action required' }, 400);
+      const p = project || proj;
+      const day = await getDay(p, date);
+      if (!day) return json({ ok: false, error: 'no such day' }, 404);
+      const c = (day.clips || []).find((x) => x.id === clipId);
+      if (!c) return json({ ok: false, error: 'no such clip' }, 404);
+      if (action === 'reject') {
+        day.clips = day.clips.filter((x) => x.id !== clipId);
+        day.dismissed = [...(day.dismissed || []), clipId];
+        day.stories = (day.stories || []).filter((s) => !(s.auto && (s.clipIds || []).length === 1 && s.clipIds[0] === clipId));
+      } else {
+        c.approval = 'approved';
+      }
+      await putDay(p, day);
+      if (action === 'approve' && c.plat) {
+        const base = process.env.URL || process.env.DEPLOY_URL || 'https://spsmedia.netlify.app';
+        try { await fetch(`${base}/api/enrich-comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date, project: p, clipId }) }); } catch { /* enrichment is best-effort */ }
+      }
+      return json({ ok: true, clipId, action });
+    }
     if (req.method === 'POST' && path === '/api/summarize') {
       const { items, project } = await req.json();
       if (!items || !items.length) return json({ ok: true, results: [] });
@@ -169,5 +195,5 @@ export default async (req) => {
 };
 
 export const config = {
-  path: ['/api/status', '/api/login', '/api/set-password', '/api/users', '/api/projects', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/regen', '/api/snap', '/api/summarize'],
+  path: ['/api/status', '/api/login', '/api/set-password', '/api/users', '/api/projects', '/api/days', '/api/day/*', '/api/keywords', '/api/save', '/api/regen', '/api/snap', '/api/summarize', '/api/approve'],
 };
