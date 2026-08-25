@@ -1887,9 +1887,10 @@ function tractionLine(s) {
 function storyCardHtml(s, idx) {
   const dnd = S.editor ? `draggable="true" data-sid="${esc(s.id)}"
       ondragstart="dragStory(event,'${esc(s.id)}')"
-      ondragover="event.preventDefault();this.style.borderTop='3px solid #0f4aa8'"
-      ondragleave="this.style.borderTop=''"
-      ondrop="this.style.borderTop='';dropStory(event,'${esc(s.id)}')"` : '';
+      ondragover="dragOverStory(event,this)"
+      ondragleave="clearDropCue(this)"
+      ondrop="clearDropCue(this);dropStory(event,'${esc(s.id)}')"
+      title="Drag to rearrange · drop on the LOWER half of another story to merge sources"` : '';
   return `<div class="story-card" ${dnd} style="animation-delay:${Math.min(idx * 24, 200)}ms${S.editor ? ';cursor:grab' : ''}">
       <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
         <div class="story-hl">${S.editor ? '<span style="color:#b9c2cf;margin-right:5px" title="Drag to rearrange">⠿</span>' : ''}${esc(s.hl)}</div>
@@ -1899,13 +1900,22 @@ function storyCardHtml(s, idx) {
         </div>` : ''}
       </div>
       <div class="story-sum">${esc(s.summary) || '<em>No summary yet</em>'}</div>
-      <div class="story-meta">
-        <div><b>Reported by:</b> ${esc(s.reported) || '-'}</div>
-        ${s.syndicated ? `<div style="padding-left:14px"><b>Syndicated by:</b> ${esc(s.syndicated)}</div>` : ''}
-        <div><b>Published on:</b> ${esc(s.published) || '-'}</div>
+      <div class="story-meta">${storyMetaHtml(s)}
         ${tractionLine(s) ? `<div>${esc(tractionLine(s))}</div>` : ''}
       </div>
     </div>`;
+}
+
+// Source lines in the team's multi-source format: built from the story's clips
+// (each outlet hyperlinked, multi-link outlets numbered); plain fields as fallback.
+function storyMetaHtml(s) {
+  const src = storySources(s);
+  const rep = src && src.rep.length ? sourceHtml(src.rep) : (esc(s.reported) || '');
+  const syn = src && src.syn.length ? sourceHtml(src.syn) : (esc(s.syndicated) || '');
+  const pub = src && src.pub.length ? sourceHtml(src.pub) : (esc(s.published) || '');
+  return `<div><b>Reported by:</b> ${rep || '-'}</div>
+    ${syn ? `<div style="padding-left:14px"><b>Syndicated by:</b> ${syn}</div>` : ''}
+    <div><b>Published on:</b> ${pub || '-'}</div>`;
 }
 
 // Render stories grouped into the fixed report sections, always shown ('-' if empty).
@@ -1930,12 +1940,79 @@ function renderStories() {
 }
 
 /* ── drag-and-drop story rearranging ── */
+/* ── multi-source display (report-160 format), shared by cards + PDF ── */
+// Group a story's clips into Reported by / Syndicated by / Published on entries,
+// each with its links. Returns null when the story has no attached clips (then
+// the plain-text fields are shown as-is).
+function storySources(s) {
+  const byId = Object.fromEntries((S.day.clips || []).map(c => [c.id, c]));
+  const cs = (s.clipIds || []).map(id => byId[id]).filter(Boolean);
+  if (!cs.length) return null;
+  const group = (list, nameOf) => {
+    const m = new Map();
+    list.forEach(c => { const k = nameOf(c); if (!m.has(k)) m.set(k, []); if (c.link && !m.get(k).includes(c.link)) m.get(k).push(c.link); });
+    return [...m.entries()].map(([name, links]) => ({ name, links }));
+  };
+  const news = cs.filter(c => !c.plat);
+  return {
+    rep: group(news.filter(c => !isSyndicator(c.pub)), c => c.pub),
+    syn: group(news.filter(c => isSyndicator(c.pub)), c => c.pub),
+    pub: group(cs.filter(c => c.plat), c => `${c.pub} (${c.plat})`),
+  };
+}
+// "The Straits Times, CNA" with each name hyperlinked; multiple links per source
+// render as "Name (1), (2)" with each number linked — the team's convention.
+function sourceHtml(entries) {
+  return entries.map(e => {
+    if (!e.links.length) return esc(e.name);
+    if (e.links.length === 1) return `<a href="${esc(e.links[0])}" target="_blank" rel="noopener">${esc(e.name)}</a>`;
+    return esc(e.name) + ' ' + e.links.map((l, j) => `<a href="${esc(l)}" target="_blank" rel="noopener">(${j + 1})</a>`).join(', ');
+  }).join(', ');
+}
+
 function dragStory(ev, id) { ev.dataTransfer.setData('text/sid', id); ev.dataTransfer.effectAllowed = 'move'; }
-// Drop ON a story card → insert the dragged story before it, adopting its section.
+// Drop cue: upper half of a card = insert before (blue top line), lower half =
+// MERGE into this story (green tint).
+function dragOverStory(ev, elm) {
+  ev.preventDefault();
+  const r = elm.getBoundingClientRect();
+  if ((ev.clientY - r.top) > r.height / 2) { elm.style.borderTop = ''; elm.style.background = '#e7f6ec'; }
+  else { elm.style.background = ''; elm.style.borderTop = '3px solid #0f4aa8'; }
+}
+function clearDropCue(elm) { elm.style.borderTop = ''; elm.style.background = ''; }
+
+// Merge two stories into one multi-source story (report-160 style): the target
+// keeps its headline/summary; clips combine; source fields recompute from the
+// union; traction takes the higher tier; marked edited so regen preserves it.
+function mergeStories(dragId, targetId) {
+  const arr = S.day.stories || [];
+  const from = arr.findIndex(x => x.id === dragId);
+  const t = arr.find(x => x.id === targetId);
+  if (from === -1 || !t) return;
+  const d = arr[from];
+  t.clipIds = uniq([...(t.clipIds || []), ...(d.clipIds || [])]);
+  const src = storySources(t);
+  const joinNames = ents => ents.map(e => e.name).join(', ');
+  const joinText = (a, b) => uniq([...(a || '').split(/,\s*/), ...(b || '').split(/,\s*/)].filter(Boolean)).join(', ');
+  t.reported = src && (src.rep.length || src.syn.length || src.pub.length) ? joinNames(src.rep) : joinText(t.reported, d.reported);
+  t.syndicated = src && (src.rep.length || src.syn.length || src.pub.length) ? joinNames(src.syn) : joinText(t.syndicated, d.syndicated);
+  t.published = src && (src.rep.length || src.syn.length || src.pub.length) ? joinNames(src.pub) : joinText(t.published, d.published);
+  const RANK = ['', 'very_low', 'low', 'moderate', 'high', 'very_high'];
+  t.trInt = RANK[Math.max(RANK.indexOf(t.trInt || ''), RANK.indexOf(d.trInt || ''))] || t.trInt;
+  t.trCom = RANK[Math.max(RANK.indexOf(t.trCom || ''), RANK.indexOf(d.trCom || ''))] || t.trCom;
+  if (!t.trNote && d.trNote) t.trNote = d.trNote;
+  t.edited = true;
+  arr.splice(from, 1);
+  persist(); renderStories(); badges();
+  toast('Merged into "' + (t.hl || '').slice(0, 50) + '…" — sources combined.');
+}
+// Drop ON a story card: upper half → insert before (reorder); lower half → MERGE.
 function dropStory(ev, targetId) {
   ev.preventDefault(); ev.stopPropagation();
   const dragId = ev.dataTransfer.getData('text/sid');
   if (!dragId || dragId === targetId) return;
+  const r = ev.currentTarget.getBoundingClientRect();
+  if ((ev.clientY - r.top) > r.height / 2) { mergeStories(dragId, targetId); return; }
   const arr = S.day.stories || [];
   const from = arr.findIndex(s => s.id === dragId);
   const target = arr.find(s => s.id === targetId);
@@ -2092,13 +2169,18 @@ function fillCfgInputs() {
 }
 
 function storyBlockHtml(s, i) {
+  // PDF uses the same multi-source linked format as the cards/DOCX.
+  const src = storySources(s);
+  const rep = src && src.rep.length ? sourceHtml(src.rep) : (s.reported ? esc(s.reported) : '');
+  const syn = src && src.syn.length ? sourceHtml(src.syn) : (s.syndicated ? esc(s.syndicated) : '');
+  const pub = src && src.pub.length ? sourceHtml(src.pub) : (s.published ? esc(s.published) : '');
   let meta = '';
-  if (s.reported) {
-    meta += `<li><b>Reported by:</b> ${esc(s.reported)}`;
-    if (s.syndicated) meta += `<ul style="margin:2px 0 0 16px;list-style:circle"><li><b>Syndicated by:</b> ${esc(s.syndicated)}</li></ul>`;
+  if (rep) {
+    meta += `<li><b>Reported by:</b> ${rep}`;
+    if (syn) meta += `<ul style="margin:2px 0 0 16px;list-style:circle"><li><b>Syndicated by:</b> ${syn}</li></ul>`;
     meta += `</li>`;
-  } else if (s.syndicated) meta += `<li><b>Syndicated by:</b> ${esc(s.syndicated)}</li>`;
-  if (s.published) meta += `<li><b>Published on:</b> ${esc(s.published)}</li>`;
+  } else if (syn) meta += `<li><b>Syndicated by:</b> ${syn}</li>`;
+  if (pub) meta += `<li><b>Published on:</b> ${pub}</li>`;
   const tr = tractionLine(s);
   if (tr) meta += `<li>${esc(tr)}</li>`;
   return `<div style="margin-bottom:16px"><div style="font-weight:700;margin-bottom:4px">${i + 1}. ${esc(s.hl)}</div>
