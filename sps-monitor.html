@@ -766,6 +766,11 @@ body.role-admin #u-role option[value="tmg_admin"] { } /* placeholder */
     <input class="f-input" id="sm-hl">
     <label class="f-label">Summary</label>
     <textarea class="f-area" id="sm-summary" style="min-height:90px"></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+      <label class="f-label" style="margin:0">Clips in this story (tick, then auto-fill)</label>
+      <button class="btn btn-sm" type="button" onclick="autofillSources()">↻ Auto-fill sources</button>
+    </div>
+    <div id="sm-clip-picker" style="max-height:150px;overflow-y:auto;border:1px solid #d5d9e0;border-radius:8px;padding:6px 8px;margin:4px 0 10px;font-size:12px;line-height:1.9"></div>
     <div class="f-row">
       <div><label class="f-label">Reported by</label><input class="f-input" id="sm-reported" placeholder="CNA, The Straits Times…"></div>
       <div><label class="f-label">Syndicated by</label><input class="f-input" id="sm-syndicated" placeholder="Nestia News…"></div>
@@ -895,8 +900,8 @@ function sectionSpecFor(all) {
   const specs = (S.cfg && S.cfg.sections && S.cfg.sections.length) ? S.cfg.sections : DEF_SECTIONS;
   const pick = (sub) => all.filter(s => s.cat === sub.cat && (sub.subOrg ? s.subOrg === sub.subOrg : true));
   return specs.map(sec => sec.head
-    ? { head: sec.head, subs: (sec.subs || []).map(sub => ({ label: sub.label, stories: pick(sub) })) }
-    : { label: sec.label, stories: pick(sec) });
+    ? { head: sec.head, subs: (sec.subs || []).map(sub => ({ label: sub.label, cat: sub.cat, subOrg: sub.subOrg || '', stories: pick(sub) })) }
+    : { label: sec.label, cat: sec.cat, subOrg: sec.subOrg || '', stories: pick(sec) });
 }
 const TR_LABEL = { very_high: 'very high', high: 'high', moderate: 'moderate', low: 'low', very_low: 'very low' };
 // Interaction tier per clip from real engagement (MM-Guide thresholds; mirror of server traction())
@@ -1862,6 +1867,7 @@ function storyFromClip(id) {
   if (!c) return;
   openStoryModal();
   S.fromClipId = id;
+  renderClipPicker([id]);
   el('sm-cat').value = c.cat === 'fyi' ? 'fyi' : c.cat;
   el('sm-hl').value = c.subject.length > 110 ? c.subject.slice(0, 110) + '…' : c.subject;
   el('sm-reported').value = c.plat ? '' : c.pub;
@@ -1879,9 +1885,14 @@ function tractionLine(s) {
 }
 
 function storyCardHtml(s, idx) {
-  return `<div class="story-card" style="animation-delay:${Math.min(idx * 24, 200)}ms">
+  const dnd = S.editor ? `draggable="true" data-sid="${esc(s.id)}"
+      ondragstart="dragStory(event,'${esc(s.id)}')"
+      ondragover="event.preventDefault();this.style.borderTop='3px solid #0f4aa8'"
+      ondragleave="this.style.borderTop=''"
+      ondrop="this.style.borderTop='';dropStory(event,'${esc(s.id)}')"` : '';
+  return `<div class="story-card" ${dnd} style="animation-delay:${Math.min(idx * 24, 200)}ms${S.editor ? ';cursor:grab' : ''}">
       <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
-        <div class="story-hl">${esc(s.hl)}</div>
+        <div class="story-hl">${S.editor ? '<span style="color:#b9c2cf;margin-right:5px" title="Drag to rearrange">⠿</span>' : ''}${esc(s.hl)}</div>
         ${S.editor ? `<div style="display:flex;gap:6px;flex-shrink:0">
           <button class="btn btn-sm btn-ghost" onclick="editStory('${esc(s.id)}')">Edit</button>
           <button class="btn btn-sm btn-ghost" style="color:#c0392b" onclick="delStory('${esc(s.id)}')">Delete</button>
@@ -1901,16 +1912,52 @@ function storyCardHtml(s, idx) {
 function renderStories() {
   el('stories-empty').classList.add('hidden');     // we always show the section scaffold now
   let html = ''; let i = 0;
-  const block = (stories) => stories.length ? stories.map(s => storyCardHtml(s, i++)).join('') : '<div class="sec-empty">-</div>';
+  // Empty sections are drop targets too, so a story can be dragged into them
+  // (the drop re-categorises it to that section).
+  const emptyDrop = (cat, subOrg) => S.editor
+    ? `<div class="sec-empty" ondragover="event.preventDefault();this.style.background='#eaf1fd'" ondragleave="this.style.background=''" ondrop="this.style.background='';dropIntoSection(event,'${esc(cat)}','${esc(subOrg)}')">- <span style="color:#b9c2cf;font-size:11px">(drag a story here)</span></div>`
+    : '<div class="sec-empty">-</div>';
+  const block = (stories, cat, subOrg) => stories.length ? stories.map(s => storyCardHtml(s, i++)).join('') : emptyDrop(cat, subOrg);
   sectionSpec().forEach(sec => {
     if (sec.head) {
       html += `<div class="sec-head">${esc(sec.head)}</div>`;
-      sec.subs.forEach(sub => { html += `<div class="sec-label sub">${esc(sub.label)}</div>` + block(sub.stories); });
+      sec.subs.forEach(sub => { html += `<div class="sec-label sub">${esc(sub.label)}</div>` + block(sub.stories, sub.cat, sub.subOrg); });
     } else {
-      html += `<div class="sec-label">${esc(sec.label)}</div>` + block(sec.stories);
+      html += `<div class="sec-label">${esc(sec.label)}</div>` + block(sec.stories, sec.cat, sec.subOrg);
     }
   });
   el('stories-list').innerHTML = html;
+}
+
+/* ── drag-and-drop story rearranging ── */
+function dragStory(ev, id) { ev.dataTransfer.setData('text/sid', id); ev.dataTransfer.effectAllowed = 'move'; }
+// Drop ON a story card → insert the dragged story before it, adopting its section.
+function dropStory(ev, targetId) {
+  ev.preventDefault(); ev.stopPropagation();
+  const dragId = ev.dataTransfer.getData('text/sid');
+  if (!dragId || dragId === targetId) return;
+  const arr = S.day.stories || [];
+  const from = arr.findIndex(s => s.id === dragId);
+  const target = arr.find(s => s.id === targetId);
+  if (from === -1 || !target) return;
+  const [moved] = arr.splice(from, 1);
+  // adopt the target's section so cross-section drags recategorise; mark edited so
+  // a regenerate never snaps it back
+  if (moved.cat !== target.cat || (moved.subOrg || '') !== (target.subOrg || '')) { moved.cat = target.cat; moved.subOrg = target.subOrg || ''; moved.edited = true; }
+  arr.splice(arr.findIndex(s => s.id === targetId), 0, moved);
+  persist(); renderStories();
+}
+// Drop on an empty section placeholder → move the story into that section (at the end).
+function dropIntoSection(ev, cat, subOrg) {
+  ev.preventDefault();
+  const dragId = ev.dataTransfer.getData('text/sid');
+  const arr = S.day.stories || [];
+  const from = arr.findIndex(s => s.id === dragId);
+  if (from === -1) return;
+  const [moved] = arr.splice(from, 1);
+  moved.cat = cat; moved.subOrg = subOrg || ''; moved.edited = true;
+  arr.push(moved);
+  persist(); renderStories();
 }
 
 function openStoryModal(id) {
@@ -1927,10 +1974,48 @@ function openStoryModal(id) {
   el('sm-tr-int').value = s ? (s.trInt || '') : '';
   el('sm-tr-com').value = s ? (s.trCom || '') : '';
   el('sm-tr-note').value = s ? s.trNote : '';
+  renderClipPicker(s ? (s.clipIds || []) : []);
   el('story-modal').classList.remove('hidden');
   setTimeout(() => el('sm-hl').focus(), 60);
 }
 function editStory(id) { openStoryModal(id); }
+
+/* ── clip picker: PM writes the snippet, sources auto-fill from ticked clips ── */
+function renderClipPicker(selected) {
+  const sel = new Set(selected || []);
+  const clips = S.day.clips || [];
+  el('sm-clip-picker').innerHTML = clips.length ? clips.map(c => `
+    <label style="display:flex;gap:7px;align-items:flex-start;cursor:pointer">
+      <input type="checkbox" class="sm-clip-cb" value="${esc(c.id)}" ${sel.has(c.id) ? 'checked' : ''} style="margin-top:3px">
+      <span>${esc(c.pub)}${c.plat ? ` <span class="plat-pill">${esc(c.plat)}</span>` : ' <span style="color:#888">(news)</span>'}${c.approval === 'pending' ? ' <span style="color:#b7791f;font-weight:700;font-size:10px">PENDING</span>' : ''} — ${esc((c.subject || '').slice(0, 70))}</span>
+    </label>`).join('') : '<span style="color:#888">No clips on this day yet.</span>';
+}
+function pickedClipIds() { return [...document.querySelectorAll('.sm-clip-cb:checked')].map(cb => cb.value); }
+
+// Known syndication aggregators → routed to "Syndicated by" instead of "Reported by"
+const SYNDICATORS = ['nestia', 'red hot', 'redhot', 'yahoo', 'stomp', 'singapura channel'];
+const isSyndicator = p => { const l = String(p || '').toLowerCase(); return SYNDICATORS.some(s => l.includes(s)); };
+
+function autofillSources() {
+  const ids = new Set(pickedClipIds());
+  const picked = (S.day.clips || []).filter(c => ids.has(c.id));
+  if (!picked.length) { toast('Tick at least one clip first.'); return; }
+  const news = picked.filter(c => !c.plat);
+  el('sm-reported').value = uniq(news.filter(c => !isSyndicator(c.pub)).map(c => c.pub)).join(', ');
+  el('sm-syndicated').value = uniq(news.filter(c => isSyndicator(c.pub)).map(c => c.pub)).join(', ');
+  el('sm-published').value = uniq(picked.filter(c => c.plat).map(c => `${c.pub} (${c.plat})`)).join(', ');
+  // traction tiers from the ticked clips' real engagement (MM-Guide thresholds)
+  const soc = picked.filter(c => c.plat && c.eng);
+  if (soc.length) {
+    const RANK = ['very_low', 'low', 'moderate', 'high', 'very_high'];
+    el('sm-tr-int').value = RANK[Math.max(...soc.map(c => Math.max(0, RANK.indexOf(tractionTier(c)))))];
+    const maxCom = Math.max(...soc.map(c => (c.eng && c.eng.comments) || 0));
+    el('sm-tr-com').value = maxCom > 300 ? 'high' : maxCom >= 100 ? 'moderate' : 'low';
+    const sent = picked.map(c => c.sentiment).find(Boolean);
+    if (sent && !el('sm-tr-note').value.trim()) el('sm-tr-note').value = sent;
+  }
+  toast('Sources filled from ' + picked.length + ' clip' + (picked.length > 1 ? 's' : '') + ' — edit freely before saving.');
+}
 
 function saveStory() {
   const hl = el('sm-hl').value.trim();
@@ -1939,15 +2024,24 @@ function saveStory() {
     reported: el('sm-reported').value.trim(), syndicated: el('sm-syndicated').value.trim(),
     published: el('sm-published').value.trim(), trInt: el('sm-tr-int').value, trCom: el('sm-tr-com').value,
     trNote: el('sm-tr-note').value.trim() };
+  // Ticked clips become the story's clips (annex links + auto-clustering exclusion).
+  const picked = pickedClipIds();
+  if (picked.length) s.clipIds = picked;
   if (S.editStoryId) {
     const i = S.day.stories.findIndex(x => x.id === S.editStoryId);
     // mark as hand-edited so a re-generate never overwrites it
     if (i !== -1) S.day.stories[i] = { ...S.day.stories[i], ...s, edited: true };
   } else {
     s.id = 's' + Date.now();
-    if (S.fromClipId) { s.clipIds = [S.fromClipId]; }   // exclude this clip from auto-clustering
+    if (!s.clipIds && S.fromClipId) { s.clipIds = [S.fromClipId]; }   // exclude this clip from auto-clustering
     S.day.stories.push(s);
   }
+  // A PM including a pending social clip in her own story is an editorial approval —
+  // approve it (which also kicks off comment/sentiment enrichment in the background).
+  (s.clipIds || []).forEach(id => {
+    const c = (S.day.clips || []).find(x => x.id === id);
+    if (c && c.approval === 'pending') { c.approval = 'approved'; api('/api/approve', { date: S.date, clipId: id, action: 'approve' }).catch(() => {}); }
+  });
   S.fromClipId = null;
   closeModal('story-modal'); persist(); renderStories(); badges();
 }
