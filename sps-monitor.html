@@ -2143,9 +2143,47 @@ async function exportDocx() {
       ps.push(new P({ spacing: { after: 80 }, alignment: D.AlignmentType.JUSTIFIED, children: [new T({ text: par, size: 22 })] })));
     const bullet = (label, txt) => new P({ bullet: { level: 0 },
       children: [new T({ text: label + ': ', bold: true, size: 21 }), new T({ text: txt, size: 21 })] });
-    if (s.reported) ps.push(bullet('Reported by', s.reported));
-    if (s.syndicated) ps.push(bullet('Syndicated by', s.syndicated));
-    if (s.published) ps.push(bullet('Published on', s.published));
+    // One story, many sources (per the team's format): each source name hyperlinks
+    // to its article/post; an outlet with several links gets "Name (1), (2)" with
+    // each number hyperlinked. Built from the story's clips; stories without clips
+    // fall back to the plain-text fields.
+    const linkedBullet = (label, entries) => new P({ bullet: { level: 0 }, children: [
+      new T({ text: label + ': ', bold: true, size: 21 }),
+      ...entries.flatMap((e, i) => {
+        const parts = i ? [new T({ text: ', ', size: 21 })] : [];
+        if (!e.links.length) parts.push(new T({ text: e.name, size: 21 }));
+        else if (e.links.length === 1) parts.push(new D.ExternalHyperlink({ link: e.links[0], children: [new T({ text: e.name, style: 'Hyperlink', size: 21 })] }));
+        else {
+          parts.push(new T({ text: e.name + ' ', size: 21 }));
+          e.links.forEach((l, j) => {
+            if (j) parts.push(new T({ text: ', ', size: 21 }));
+            parts.push(new D.ExternalHyperlink({ link: l, children: [new T({ text: `(${j + 1})`, style: 'Hyperlink', size: 21 })] }));
+          });
+        }
+        return parts;
+      })] });
+    const scs = (s.clipIds || []).map(id => clipById[id]).filter(Boolean);
+    const groupSrc = (list, nameOf) => {
+      const m = new Map();
+      list.forEach(c => { const k = nameOf(c); if (!m.has(k)) m.set(k, []); if (c.link && !m.get(k).includes(c.link)) m.get(k).push(c.link); });
+      return [...m.entries()].map(([name, links]) => ({ name, links }));
+    };
+    if (scs.length) {
+      const news = scs.filter(c => !c.plat);
+      const rep = groupSrc(news.filter(c => !isSyndicator(c.pub)), c => c.pub);
+      const syn = groupSrc(news.filter(c => isSyndicator(c.pub)), c => c.pub);
+      const pub = groupSrc(scs.filter(c => c.plat), c => `${c.pub} (${c.plat})`);
+      if (rep.length) ps.push(linkedBullet('Reported by', rep));
+      else if (s.reported) ps.push(bullet('Reported by', s.reported));
+      if (syn.length) ps.push(linkedBullet('Syndicated by', syn));
+      else if (s.syndicated) ps.push(bullet('Syndicated by', s.syndicated));
+      if (pub.length) ps.push(linkedBullet('Published on', pub));
+      else if (s.published) ps.push(bullet('Published on', s.published));
+    } else {
+      if (s.reported) ps.push(bullet('Reported by', s.reported));
+      if (s.syndicated) ps.push(bullet('Syndicated by', s.syndicated));
+      if (s.published) ps.push(bullet('Published on', s.published));
+    }
     const tr = tractionLine(s);
     if (tr) ps.push(new P({ bullet: { level: 0 }, children: [new T({ text: tr, size: 21 })] }));
     const links = uniq((s.clipIds || []).map(id => clipById[id]).filter(c => c && c.link).map(c => c.link));
