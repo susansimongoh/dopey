@@ -383,7 +383,7 @@ const ownPost = (cfg, it) => SOCIAL_PLATS.has(it.plat) &&
   !!(ownOrg(cfg, it.kw) || ownOrg(cfg, it.pub));
 
 // Convert a fetched item to a clip (the evidence-log shape used everywhere).
-function itemToClip(it) {
+function itemToClip(it, cfg) {
   return {
     id: it.id, date: (it.published || '').slice(0, 10) || null,
     pub: it.pub, plat: it.plat || (it.src === 'Reddit' ? 'Reddit' : ''),
@@ -397,7 +397,10 @@ function itemToClip(it) {
     ...(it.audioUrl ? { audioUrl: it.audioUrl } : {}),  // transient: reel audio for post-gate Gemini transcription (stripped after)
     // PM approval gate: social clips arrive PENDING and only feed stories/reports
     // (and comment scraping) once approved via /api/approve. News clips need none.
-    ...(SOCIAL_PLATS.has(it.plat || '') ? { approval: 'pending' } : {}),
+    // OWN SPS/YRSG accounts skip the gate (user decision 25 Aug): everything they
+    // post is reportable by definition, so they arrive approved and Social Media
+    // Updates populates without PM clicks (sentiment enriched at sweep time).
+    ...(SOCIAL_PLATS.has(it.plat || '') ? { approval: ownPost(cfg, it) ? 'approved' : 'pending' } : {}),
     ...(it.cmts && it.cmts.length ? { cmts: it.cmts } : {}),   // top comments (FB: free at sweep time)
   };
 }
@@ -451,7 +454,7 @@ export function mergeClips(day, results, cfg) {
     // — checked against caption PLUS any OCR/subtitle text read from the media.
     if (!ownPost(cfg, it) && !isRelevant((it.title || '') + ' ' + (it.extra || ''), it.pub, skipLocaleFor(it), vernFor(it))) continue;
     have.add(it.id); if (it.link) haveLinks.add(it.link); haveContent.add(ck);
-    day.clips.push(itemToClip(it));
+    day.clips.push(itemToClip(it, cfg));
   }
   day.clips.sort((a, b) => (b.published || b.date || '').localeCompare(a.published || a.date || ''));
 }
@@ -1307,7 +1310,25 @@ export async function runSocialFetch(project, date) {
   const touched = new Set([date, ...Object.keys(byDate)]);
   for (const d of touched) {
     let day = (await getDay(project, d)) || freshDay(d);
-    if (byDate[d] && byDate[d].length) { mergeClips(day, byDate[d], cfg); igReelCount += await transcribeKeptReels(day, project); day = await rebuildStories(day, cfg); }
+    if (byDate[d] && byDate[d].length) {
+      mergeClips(day, byDate[d], cfg);
+      igReelCount += await transcribeKeptReels(day, project);
+      // Own SPS/YRSG clips arrive auto-approved (no PM step), so enrich their
+      // comment sentiment here — once per clip ever (!sentiment guard), capped per
+      // run. FB comments are already on the clip; TikTok/IG fetch on demand.
+      let enriched = 0;
+      for (const c of (day.clips || [])) {
+        if (enriched >= 8) break;
+        if (c.plat && c.approval === 'approved' && !c.sentiment && ownPost(cfg, c)) {
+          try {
+            if (!c.cmts || !c.cmts.length) c.cmts = await fetchPostComments(c, project);
+            c.sentiment = await sentimentLine(c.cmts, project);
+            if (c.sentiment) enriched++;
+          } catch { /* best-effort */ }
+        }
+      }
+      day = await rebuildStories(day, cfg);
+    }
     if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; day.social_search_raw = searchRaw; day.ocr_stats = ocrStats; day.ig_reels = igReelCount; }
     await putDay(project, day);
   }
