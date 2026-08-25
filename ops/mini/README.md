@@ -16,7 +16,7 @@ Slack when a morning sweep fails (missing cron run, Apify errors, empty day).
 2. **Create the config** at `~/.dopey-health.json` (chmod 600):
    ```json
    {
-     "supabase_url": "https://sqqbnxurdqgezfxduvog.supabase.co",
+     "supabase_url": "https://<project-ref>.supabase.co",
      "supabase_anon_key": "<anon key — Supabase dashboard → Settings → API>",
      "slack_webhook_url": "<optional — Slack incoming webhook for alerts>",
      "project": "sps"

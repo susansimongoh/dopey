@@ -9,7 +9,7 @@
 //
 // Config JSON (default ~/.dopey-health.json, override with --config <path>):
 //   {
-//     "supabase_url": "https://sqqbnxurdqgezfxduvog.supabase.co",
+//     "supabase_url": "https://<project-ref>.supabase.co",
 //     "supabase_anon_key": "<anon key>",
 //     "slack_webhook_url": "https://hooks.slack.com/services/…",   // optional
 //     "project": "sps"
