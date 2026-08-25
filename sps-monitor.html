@@ -851,7 +851,7 @@ body.role-admin #u-role option[value="tmg_admin"] { } /* placeholder */
       <div><label class="f-label">Date / range heading</label><input class="f-input" id="cfg-date" placeholder="Friday, 13 June 2026"></div>
     </div>
     <div class="f-row" style="margin-top:8px">
-      <div><label class="f-label">Range end date (optional, for multi-day reports)</label><input class="f-input" id="cfg-range-end" type="date"></div>
+      <div><label class="f-label">Range end date (optional, for multi-day reports)</label><input class="f-input" id="cfg-range-end" type="date" onchange="refreshCfgDate()"></div>
     </div>
     <div class="m-foot">
       <button class="btn btn-ghost" onclick="closeModal('report-modal')">Cancel</button>
@@ -2053,13 +2053,42 @@ function delStory(id) {
 }
 
 /* ════════════════════ REPORT ════════════════════ */
+// Team-style date heading: "TUESDAY, 25 AUGUST 2026" for a single day, or
+// "SATURDAY TO MONDAY, 22 AUGUST TO 24 AUGUST 2026" for a weekend/range digest
+// (day names + dates, year once at the end — month repeated, matching report 160).
+function reportHeading(startDate, endDate) {
+  const DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+  const MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+  const d = s => new Date(s + 'T00:00:00Z');
+  const dm = s => `${d(s).getUTCDate()} ${MONTHS[d(s).getUTCMonth()]}`;
+  if (!endDate || endDate <= startDate) return `${DAYS[d(startDate).getUTCDay()]}, ${dm(startDate)} ${d(startDate).getUTCFullYear()}`;
+  return `${DAYS[d(startDate).getUTCDay()]} TO ${DAYS[d(endDate).getUTCDay()]}, ${dm(startDate)} TO ${dm(endDate)} ${d(endDate).getUTCFullYear()}`;
+}
+// Range may point either way (Monday page + Saturday end = the weekend digest).
+function cfgRange() {
+  const end = (el('cfg-range-end').value || '').trim();
+  if (!end || end === S.date) return [S.date, ''];
+  return end < S.date ? [end, S.date] : [S.date, end];
+}
+function refreshCfgDate() {
+  const [lo, hi] = cfgRange();
+  el('cfg-date').value = reportHeading(lo, hi);
+}
 function fillCfgInputs() {
-  // auto-suggest the next report number from the last exported one
+  // Additive digest numbering: the last issued number lives in the SHARED project
+  // config (report_num_last) so it survives browser/user changes; localStorage is
+  // only a same-browser fallback.
   let suggest = '';
-  try { const last = parseInt(localStorage.getItem('sps-last-report-num') || '', 10); if (last) suggest = (last + 1) + '/' + S.date.slice(0, 4); } catch { /* no suggestion */ }
+  const lastShared = parseInt((S.cfg && S.cfg.report_num_last) || '', 10);
+  const lastLocal = parseInt(localStorage.getItem('sps-last-report-num') || '', 10) || 0;
+  const last = Math.max(lastShared || 0, lastLocal);
+  if (last) suggest = (last + 1) + '/' + S.date.slice(0, 4);
   el('cfg-num').value = S.day.cfg.num || suggest;
-  el('cfg-date').value = S.day.cfg.date || prettyDate(S.date);
-  el('cfg-range-end').value = '';
+  // Weekend flow: a MONDAY digest covers Saturday→Monday (team convention);
+  // any other weekday is just that day.
+  const isMon = new Date(S.date + 'T00:00:00Z').getUTCDay() === 1;
+  el('cfg-range-end').value = isMon ? new Date(new Date(S.date + 'T00:00:00Z').getTime() - 2 * 864e5).toISOString().slice(0, 10) : '';
+  if (S.day.cfg.date) el('cfg-date').value = S.day.cfg.date; else refreshCfgDate();
 }
 
 function storyBlockHtml(s, i) {
@@ -2101,10 +2130,10 @@ function reportHtml() {
 /* ── DOCX export (team MM-Summaries format) ── */
 // Multi-day range: gather this page's day plus every day up to cfg-range-end (max 7).
 async function gatherRangeDays() {
-  const end = (el('cfg-range-end').value || '').trim();
-  if (!end || end <= S.date) return [S.day];
+  const [lo, hi] = cfgRange();
+  if (!hi) return [S.day];
   const days = [];
-  let cur = new Date(S.date + 'T00:00:00Z'); const stop = new Date(end + 'T00:00:00Z');
+  let cur = new Date(lo + 'T00:00:00Z'); const stop = new Date(hi + 'T00:00:00Z');
   let n = 0;
   while (cur <= stop && n++ < 7) {
     const dt = cur.toISOString().slice(0, 10);
@@ -2131,8 +2160,12 @@ async function exportDocx() {
   const ch = [];
   if (headImg) ch.push(new P({ children: [new D.ImageRun({ data: headImg, transformation: { width: 620, height: 160 } })] }));
   ch.push(new P({ alignment: D.AlignmentType.RIGHT, children: [new T({ text: el('cfg-num').value.trim() || '___/2026', bold: true, size: 20 })] }));
+  // Two-line title per the team format: "MEDIA MONITORING REPORT –" then the
+  // day-name date line ("SATURDAY TO MONDAY, 22 AUGUST TO 24 AUGUST 2026").
+  ch.push(new P({ alignment: D.AlignmentType.CENTER,
+    children: [new T({ text: 'MEDIA MONITORING REPORT –', bold: true, size: 26, color: '16263D' })] }));
   ch.push(new P({ alignment: D.AlignmentType.CENTER, spacing: { after: 240 },
-    children: [new T({ text: 'MEDIA MONITORING REPORT – ' + (el('cfg-date').value.trim() || prettyDate(S.date)).toUpperCase(), bold: true, size: 26, color: '16263D' })] }));
+    children: [new T({ text: (el('cfg-date').value.trim() || reportHeading(S.date, '')).toUpperCase(), bold: true, size: 26, color: '16263D' })] }));
   const bar = (t, fill, color) => new P({ shading: { type: D.ShadingType.CLEAR, fill: fill || '16263D' },
     spacing: { before: 200, after: 120 }, children: [new T({ text: ' ' + t, bold: true, color: color || 'FFFFFF', size: 22 })] });
   const clipById = Object.fromEntries(clips.map(c => [c.id, c]));
@@ -2228,7 +2261,20 @@ async function exportDocx() {
   a.download = `${num} - SPS MM Summaries - ${(el('cfg-date').value.trim() || S.date).replace(/[\\/:*?"<>|]/g, '')}.docx`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  try { const n = parseInt(num, 10); if (n) localStorage.setItem('sps-last-report-num', String(n)); } catch { /* best-effort */ }
+  // Persist the issued number to the SHARED config (read-modify-write so we don't
+  // clobber concurrent watchlist edits) → next export on ANY browser suggests n+1.
+  try {
+    const n = parseInt(num, 10);
+    if (n) {
+      localStorage.setItem('sps-last-report-num', String(n));
+      const fresh = await api('/api/keywords');
+      if (!fresh.report_num_last || n > parseInt(fresh.report_num_last, 10)) {
+        fresh.report_num_last = n;
+        await api('/api/keywords', fresh);
+        S.cfg.report_num_last = n;
+      }
+    }
+  } catch { /* best-effort */ }
   toast('DOCX exported.');
 }
 
