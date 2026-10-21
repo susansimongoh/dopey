@@ -62,6 +62,25 @@ export async function putDay(project, day) {
   });
 }
 
+// Days since the last SUCCESSFUL social sweep. Cheap: a filtered, date-only
+// projection (~30 bytes), not a payload read. Drives sweep depth in
+// runSocialFetch — weekday-to-weekday this is 1, across a weekend 3, and after a
+// failed or skipped sweep it is the real gap, so depth self-heals instead of
+// assuming the calendar.
+export async function sweepGapDays(project) {
+  try {
+    const rows = await supa(`monitor_days?project=eq.${PROJ(project)}`
+      + '&payload-%3E%3Esocial_fetched_at=not.is.null&select=date&order=date.desc&limit=1');
+    const last = rows && rows[0] && rows[0].date;
+    if (!last) return 3;                      // no history → weekend depth, not unbounded
+    const gap = Math.round((Date.now() - new Date(last + 'T00:00:00Z').getTime()) / 864e5);
+    // Capped at 3 deliberately: 3 already covers a weekend, and it bounds what a
+    // single sweep can ever cost if this query misreports. A longer outage is
+    // recovered with the explicit /api/backfill path, not by an automatic deep sweep.
+    return Math.max(1, Math.min(gap, 3));
+  } catch { return 3; }                       // can't tell → cover a weekend, never starve
+}
+
 export async function listDays(project) {
   const rows = await supa(`monitor_days?project=eq.${PROJ(project)}&select=date,payload&order=date.desc`);
   return (rows || []).map((r) => {
@@ -1230,9 +1249,25 @@ export async function runSocialFetch(project, date) {
   const cfg = await getWatchlist(project);
   // Social accounts (activists, orgs, ministers) post SPS-relevant content
   // weekly, not daily — use a wider window than the news fetch.
-  const cutoff = new Date(Date.now() - (cfg.social_lookback_days || 7) * 864e5);
-  const limit = cfg.posts_per_account || 3;
-  const newsLimit = cfg.news_posts_per_account || 12;   // outlets post a lot → pull deeper
+  // DEPTH IS SIZED TO THE GAP, NOT TO A FIXED WINDOW.
+  // Apify bills per result RETURNED, so asking every account for a week's worth of
+  // posts every weekday meant paying ~5x for the same posts: measured 1,120 results
+  // requested/sweep to surface ~75 genuinely new ones (docs/AUDIT-2026-10-21.md).
+  // Ask instead for what could have appeared since the last sweep. Tue-Fri that is
+  // one day; Monday three; after an outage, the real gap. Monday depth is now
+  // DEEPER than the old fixed 12, so weekend coverage improves while the other four
+  // days stop over-fetching. Set adaptive_depth:false in config to revert.
+  const gap = cfg.adaptive_depth === false ? null : await sweepGapDays(project);
+  const limit = gap
+    ? Math.min(cfg.posts_per_account_max || 8, Math.max(2, (cfg.posts_per_day || 2) * gap))
+    : (cfg.posts_per_account || 3);
+  const newsLimit = gap
+    ? Math.min(cfg.news_posts_per_account_max || 18, Math.max(5, (cfg.news_posts_per_day || 5) * gap))
+    : (cfg.news_posts_per_account || 12);
+  // Lookback only ever needed to bridge the gap (it is the weekend-recovery
+  // mechanism, not a discovery window), so size it the same way with a day of slack.
+  const lookback = gap ? Math.max(2, gap + 1) : (cfg.social_lookback_days || 7);
+  const cutoff = new Date(Date.now() - lookback * 864e5);
   const acc = cfg.accounts || {};
   const news = cfg.news_accounts || {};                 // SG news outlets (separate group)
   const errors = []; let results = [];
@@ -1240,7 +1275,7 @@ export async function runSocialFetch(project, date) {
   // Cost instrumentation: `requested` is what we PAY Apify for (it bills per result
   // returned, not per result kept), `returned` is what survived the lookback cutoff,
   // `kept` is what passed the gate. requested/kept is the over-fetch ratio.
-  const sweepStats = { requested: 0, returned: 0, kept: 0 };
+  const sweepStats = { requested: 0, returned: 0, kept: 0, gap, limit, newsLimit, lookback };
   const FN = { TikTok: sweepTiktok, Instagram: sweepInstagram, Facebook: sweepFacebook, X: sweepTwitter };
   const KEY = { TikTok: 'tiktok', Instagram: 'instagram', Facebook: 'facebook', X: 'twitter' };
   const sweeps = [];
