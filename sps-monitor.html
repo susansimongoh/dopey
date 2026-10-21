@@ -573,6 +573,14 @@ body.role-admin #u-role option[value="tmg_admin"] { } /* placeholder */
 
   <div class="content">
     <div id="fetchline" class="fetchline hidden"></div>
+    <!-- Awaiting-review banner. A queue nobody is told about is a queue nobody works:
+         the 25-Aug gate sat on 300 unreviewed clips for two months because nothing
+         ever surfaced them. One click jumps straight to the pending items. -->
+    <div id="review-banner" class="hidden editor-only" style="display:flex;align-items:center;gap:10px;background:#fff8e6;border:1px solid #e8d9a8;border-left:4px solid #b7791f;border-radius:8px;padding:9px 13px;margin-bottom:12px;font-size:13px">
+      <span style="font-size:15px">⏳</span>
+      <span id="review-banner-text" style="flex:1"></span>
+      <button class="btn btn-sm" onclick="showPendingOnly()">Review now</button>
+    </div>
 
     <!-- STORIES -->
     <section id="tab-stories">
@@ -594,6 +602,10 @@ body.role-admin #u-role option[value="tmg_admin"] { } /* placeholder */
         <button class="btn btn-sm btn-ink editor-only" onclick="openClipModal()">+ Add clip manually</button>
         <span class="spacer"></span>
         <input class="search" id="clips-search" placeholder="filter…" oninput="renderClips()">
+      </div>
+      <div id="pending-filter-note" class="hidden" style="font-size:12px;color:#8a6d3b;margin:0 0 8px">
+        Showing <b>awaiting review</b> only.
+        <a href="#" onclick="S.pendingOnly=false;renderClips();return false" style="margin-left:6px">Show all clips</a>
       </div>
       <div id="clips-list"></div>
       <div id="clips-empty" class="empty hidden">
@@ -1514,6 +1526,22 @@ function setTab(t) {
 function badges() {
   el('b-clips').textContent = (S.day.clips || []).length;
   el('b-stories').textContent = (S.day.stories || []).length;
+  const pend = (S.day.clips || []).filter(c => c.approval === 'pending').length;
+  const b = el('review-banner');
+  if (b) {
+    b.classList.toggle('hidden', !(pend && S.editor));
+    if (pend) el('review-banner-text').innerHTML =
+      `<b>${pend} clip${pend === 1 ? '' : 's'} awaiting your review</b> — from sources Dopey hasn't seen before. `
+      + `They stay out of the report until you approve them.`;
+  }
+}
+
+// Jump to the Clips tab filtered to just the pending items.
+function showPendingOnly() {
+  setTab('clips');
+  el('clips-search').value = '';
+  S.pendingOnly = true;
+  renderClips();
 }
 
 function renderAll() { renderClips(); renderStories(); badges(); }
@@ -1698,7 +1726,10 @@ function saveReportCfg() {
 function renderClips() {
   const q = (el('clips-search').value || '').toLowerCase();
   let clips = S.day.clips || [];
+  if (S.pendingOnly) clips = clips.filter(c => c.approval === 'pending');
   if (q) clips = clips.filter(c => (c.pub + c.subject + (c.plat || '')).toLowerCase().includes(q));
+  const pf = el('pending-filter-note');
+  if (pf) pf.classList.toggle('hidden', !S.pendingOnly);
   el('clips-empty').classList.toggle('hidden', clips.length > 0);
   el('clips-list').innerHTML = clips.map((c, idx) => `
     <div class="clip-row" style="animation-delay:${Math.min(idx * 25, 250)}ms">

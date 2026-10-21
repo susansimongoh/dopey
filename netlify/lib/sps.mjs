@@ -382,6 +382,19 @@ const SOCIAL_PLATS = new Set(['Facebook', 'Instagram', 'TikTok', 'YouTube', 'Lin
 const ownPost = (cfg, it) => SOCIAL_PLATS.has(it.plat) &&
   !!(ownOrg(cfg, it.kw) || ownOrg(cfg, it.pub));
 
+// Fail-OPEN approval. A social source with a proven yield history (>=3 kept clips
+// on >=3 distinct days, still active in the last 60 days — derived from the archive
+// into cfg.auto_approve_sources) arrives APPROVED; only new or unproven sources
+// queue for the PM. The 25-Aug fail-closed design queued everything, and 59 days
+// later 300 clips were stuck behind it with 3 human approvals: a gate with no
+// nudge is a dead letter queue. The PM keeps the veto (reject still works) and the
+// list is plain config, so tightening it is a one-line edit.
+const establishedSource = (cfg, it) => {
+  if (!SOCIAL_PLATS.has(it.plat)) return false;
+  const ok = new Set((cfg.auto_approve_sources || []).map(_normHandle));
+  return ok.has(_normHandle(it.kw)) || ok.has(_normHandle(it.pub));
+};
+
 // Convert a fetched item to a clip (the evidence-log shape used everywhere).
 function itemToClip(it, cfg) {
   return {
@@ -400,7 +413,13 @@ function itemToClip(it, cfg) {
     // OWN SPS/YRSG accounts skip the gate (user decision 25 Aug): everything they
     // post is reportable by definition, so they arrive approved and Social Media
     // Updates populates without PM clicks (sentiment enriched at sweep time).
-    ...(SOCIAL_PLATS.has(it.plat || '') ? { approval: ownPost(cfg, it) ? 'approved' : 'pending' } : {}),
+    ...(SOCIAL_PLATS.has(it.plat || '') ? {
+      approval: (ownPost(cfg, it) || establishedSource(cfg, it)) ? 'approved' : 'pending',
+    } : {}),
+    // When this clip first entered the archive. Lets us measure detection latency and
+    // the incremental yield of each fetch run (the 09:45 sweep vs the 11/15/19 news
+    // top-ups), which was previously unmeasurable. Distinct from `published`/`date`.
+    first_seen: new Date().toISOString(),
     ...(it.cmts && it.cmts.length ? { cmts: it.cmts } : {}),   // top comments (FB: free at sweep time)
   };
 }
@@ -1218,14 +1237,18 @@ export async function runSocialFetch(project, date) {
   const news = cfg.news_accounts || {};                 // SG news outlets (separate group)
   const errors = []; let results = [];
   const rawCounts = {};   // posts each platform returned (pre-gate) — diagnostics for thin days
+  // Cost instrumentation: `requested` is what we PAY Apify for (it bills per result
+  // returned, not per result kept), `returned` is what survived the lookback cutoff,
+  // `kept` is what passed the gate. requested/kept is the over-fetch ratio.
+  const sweepStats = { requested: 0, returned: 0, kept: 0 };
   const FN = { TikTok: sweepTiktok, Instagram: sweepInstagram, Facebook: sweepFacebook, X: sweepTwitter };
   const KEY = { TikTok: 'tiktok', Instagram: 'instagram', Facebook: 'facebook', X: 'twitter' };
   const sweeps = [];
   // Two groups: curated accounts (activists/orgs/own/CARE) at the normal limit,
   // and news outlets at a deeper limit so their court/SPS stories surface.
   for (const name of ['TikTok', 'Instagram', 'Facebook', 'X']) {
-    const a = acc[KEY[name]]; if (a && a.length) sweeps.push([name, FN[name], a, limit, false]);
-    const n = news[KEY[name]]; if (n && n.length) sweeps.push([name, FN[name], n, newsLimit, true]);
+    const a = acc[KEY[name]]; if (a && a.length) { sweeps.push([name, FN[name], a, limit, false]); sweepStats.requested += a.length * limit; }
+    const n = news[KEY[name]]; if (n && n.length) { sweeps.push([name, FN[name], n, newsLimit, true]); sweepStats.requested += n.length * newsLimit; }
   }
   // Run all platform sweeps CONCURRENTLY. Sequentially, each apifyRun can wait up
   // to 10 min (maxWait), so a couple of slow actors blow past Netlify's 15-min
@@ -1240,7 +1263,7 @@ export async function runSocialFetch(project, date) {
     } catch (e) { errors.push(`${name}: ${String(e).slice(0, 90)}`); return { name, r: null }; }
   }));
   for (const { name, r } of swept) {
-    if (r) { rawCounts[name] = (rawCounts[name] || 0) + r.length; results = results.concat(r); }
+    if (r) { rawCounts[name] = (rawCounts[name] || 0) + r.length; sweepStats.returned += r.length; results = results.concat(r); }
     else rawCounts[name] = rawCounts[name] || 'ERR';
   }
   // Instagram reel transcripts are done POST-GATE via Gemini (see transcribeKeptReels
@@ -1311,25 +1334,30 @@ export async function runSocialFetch(project, date) {
   for (const d of touched) {
     let day = (await getDay(project, d)) || freshDay(d);
     if (byDate[d] && byDate[d].length) {
+      const beforeN = (day.clips || []).length;
       mergeClips(day, byDate[d], cfg);
+      sweepStats.kept += (day.clips || []).length - beforeN;
       igReelCount += await transcribeKeptReels(day, project);
-      // Own SPS/YRSG clips arrive auto-approved (no PM step), so enrich their
-      // comment sentiment here — once per clip ever (!sentiment guard), capped per
-      // run. FB comments are already on the clip; TikTok/IG fetch on demand.
+      // Auto-approved clips get their comment sentiment here (no PM step), once per
+      // clip ever (!sentiment guard), capped per run. Own SPS/YRSG clips may pay for
+      // a TikTok/IG comment fetch; ESTABLISHED sources are enriched only when the
+      // comments already rode along free with the sweep (Facebook), so widening the
+      // auto-approve set costs no extra Apify spend.
       let enriched = 0;
       for (const c of (day.clips || [])) {
         if (enriched >= 8) break;
-        if (c.plat && c.approval === 'approved' && !c.sentiment && ownPost(cfg, c)) {
-          try {
-            if (!c.cmts || !c.cmts.length) c.cmts = await fetchPostComments(c, project);
-            c.sentiment = await sentimentLine(c.cmts, project);
-            if (c.sentiment) enriched++;
-          } catch { /* best-effort */ }
-        }
+        if (!c.plat || c.approval !== 'approved' || c.sentiment) continue;
+        const own = ownPost(cfg, c), freeCmts = Array.isArray(c.cmts) && c.cmts.length;
+        if (!own && !freeCmts) continue;
+        try {
+          if (own && !freeCmts) c.cmts = await fetchPostComments(c, project);
+          c.sentiment = await sentimentLine(c.cmts, project);
+          if (c.sentiment) enriched++;
+        } catch { /* best-effort */ }
       }
       day = await rebuildStories(day, cfg);
     }
-    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; day.social_search_raw = searchRaw; day.ocr_stats = ocrStats; day.ig_reels = igReelCount; }
+    if (d === date) { day.social_fetched_at = new Date().toISOString(); day.social_errors = errors; day.social_raw = rawCounts; day.social_search_raw = searchRaw; day.ocr_stats = ocrStats; day.ig_reels = igReelCount; day.sweep_stats = sweepStats; }
     await putDay(project, day);
   }
   return (await getDay(project, date)) || freshDay(date);
