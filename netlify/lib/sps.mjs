@@ -99,6 +99,21 @@ export async function listProjects() {
   const rows = await supa(`monitor_config?key=eq.projects&select=value`);
   return (rows && rows[0] && rows[0].value) || [{ id: 'sps', name: 'Singapore Prison Service', logo: null }];
 }
+// A paused project does NO fetching at all — scheduled or manual. The crons
+// already skipped paused projects, but /api/fetch, /api/fetch-social and
+// /api/backfill went straight to the run* functions and still spent money, so a
+// stray dashboard click could cost a few dollars against a project that was
+// meant to be stopped. Guarded at the run* entry points rather than in each
+// function so there is one place that decides, and no caller can bypass it.
+// Fails OPEN on a lookup error: a Supabase blip must not silently stop monitoring.
+export async function isPaused(project) {
+  try {
+    const list = await listProjects();
+    const me = (list || []).find((p) => p && p.id === PROJ(project));
+    return !!(me && me.paused);
+  } catch { return false; }
+}
+
 export async function putProjects(list) {
   await supa('monitor_config', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' },
     json: [{ key: 'projects', value: list, updated_at: new Date().toISOString() }] });
@@ -777,6 +792,7 @@ async function confirmByBody(items, cfg) {
 }
 
 export async function runNewsFetch(project, date) {
+  if (await isPaused(project)) { console.log(`runNewsFetch [${project}] ${date}: project paused, skipped`); return (await getDay(project, date)) || freshDay(date); }
   const cfg = await getWatchlist(project);
   const errors = [];
   const uniq = await gatherNews(cfg, cfg.lookback_days || 2, errors);
@@ -804,6 +820,7 @@ export async function runNewsFetch(project, date) {
 // day it was PUBLISHED (not the fetch day), then regenerate stories per day. Used
 // by /api/backfill to fill in history (e.g. "from the 4th").
 export async function runBackfill(project, fromDate) {
+  if (await isPaused(project)) { console.log(`runBackfill [${project}] from ${fromDate}: project paused, skipped`); return (await getDay(project, fromDate)) || freshDay(fromDate); }
   const cfg = await getWatchlist(project);
   const errors = [];
   const today = new Date().toISOString().slice(0, 10);
@@ -1245,6 +1262,7 @@ async function searchTwitter(queries, cutoff, limit) {
 }
 
 export async function runSocialFetch(project, date) {
+  if (await isPaused(project)) { console.log(`runSocialFetch [${project}] ${date}: project paused, skipped`); return (await getDay(project, date)) || freshDay(date); }
   if (!APIFY_TOKEN(project)) throw new Error('APIFY_TOKEN not set');
   const cfg = await getWatchlist(project);
   // Social accounts (activists, orgs, ministers) post SPS-relevant content

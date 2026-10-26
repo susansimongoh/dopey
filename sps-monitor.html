@@ -573,6 +573,10 @@ body.role-admin #u-role option[value="tmg_admin"] { } /* placeholder */
 
   <div class="content">
     <div id="fetchline" class="fetchline hidden"></div>
+    <div id="paused-banner" class="hidden" style="display:flex;align-items:center;gap:10px;background:#f1f3f6;border:1px solid #d6dbe2;border-left:4px solid #6b7684;border-radius:8px;padding:9px 13px;margin-bottom:12px;font-size:13px;color:#44505f">
+      <span style="font-size:15px">⏸</span>
+      <span><b>Monitoring is paused.</b> Scheduled sweeps and manual fetching are both off, so nothing is being collected and nothing is being spent. The archive below stays fully readable. Ask an admin to resume.</span>
+    </div>
     <!-- Awaiting-review banner. A queue nobody is told about is a queue nobody works:
          the 25-Aug gate sat on 300 unreviewed clips for two months because nothing
          ever surfaced them. One click jumps straight to the pending items. -->
@@ -1422,9 +1426,15 @@ function renderMasthead() {
   el('btn-fetch').textContent = '⚡ Fetch news';
   el('btn-social').textContent = '🛰 Sweep socials';
   // Sweeps apply ONLY to today — previous days are read-only from the archive.
+  // A paused project hides them entirely: the server refuses a paused fetch anyway
+  // (isPaused in sps.mjs), so leaving a live-looking button would just be a lie.
   const isToday = S.date === localDate();
-  el('btn-fetch').classList.toggle('hidden', !isToday);
-  el('btn-social').classList.toggle('hidden', !isToday || !S.status?.apify);
+  const paused = !!((S.projects || []).find(p => p.id === S.project) || {}).paused;
+  el('btn-fetch').classList.toggle('hidden', !isToday || paused);
+  el('btn-social').classList.toggle('hidden', !isToday || !S.status?.apify || paused);
+  const pb = el('paused-banner');
+  if (pb) pb.classList.toggle('hidden', !paused);
+  if (paused) el('mast-kicker').textContent += ' · paused';
 }
 
 // Resolve a clip's hero image to a usable src. Remote URLs (cloud: og:image,
