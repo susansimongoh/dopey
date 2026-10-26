@@ -32,6 +32,21 @@ const date = arg('--date') || sgtNow.toISOString().slice(0, 10);
 const weekday = new Date(date + 'T00:00:00Z').getUTCDay();   // date is an SGT calendar day
 if (weekday === 0 || weekday === 6) { console.log(`[dopey-health] ${date} is a weekend (no sweep scheduled) — OK`); process.exit(0); }
 
+// A paused project is a deliberate state, not a failure. Without this the check
+// would cry wolf every weekday for as long as Dopey is paused, which is exactly
+// how an alert channel stops being trusted.
+try {
+  const pr = await fetch(`${cfg.supabase_url}/rest/v1/monitor_config?key=eq.projects&select=value`, {
+    headers: { apikey: cfg.supabase_anon_key, Authorization: `Bearer ${cfg.supabase_anon_key}` },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (pr.ok) {
+    const rows = await pr.json();
+    const me = (((rows[0] || {}).value) || []).find((x) => x && x.id === project);
+    if (me && me.paused) { console.log(`[dopey-health] ${date}: project '${project}' is paused — no sweep expected, OK`); process.exit(0); }
+  }
+} catch { /* can't tell → fall through and run the normal check */ }
+
 const alert = async (lines) => {
   const text = `:rotating_light: *Dopey health check — ${date}*\n` + lines.map((l) => `• ${l}`).join('\n')
     + `\nDashboard: https://spsmedia.netlify.app`;
